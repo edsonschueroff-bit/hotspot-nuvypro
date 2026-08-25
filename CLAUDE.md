@@ -2560,10 +2560,28 @@ Todos os itens priorizados foram implementados e validados:
       - Live Polling a cada 4 segundos no modal PIX com auto-fechamento e comemoração de liberação imediata pós-pagamento.
       - Caixa informativa no modal destacando a liberação 100% automática pelo sistema sem necessidade de comprovante.
 
+12. **Auditoria Geral dos 4 Pilares & Integridade de Dados (CONCLUÍDO 25/08/2026):**
+    - **DRE Master (`financeiroController.js`):** Corrigido reconhecimento de `role: 'super_admin'` via helper `isSuper(req)` no JWT, permitindo visão global consolidada de faturas pagas (R$ 295,00/mês).
+    - **Exclusão em Cascata (`empresaController.js`):** Implementada remoção em cascata (`admin_empresas`, `admins`, `portais`, `empresa_configs`, `mikrotiks`) ao deletar empresa, com trava de segurança contra deleção da empresa default (`slug === 'default'`) e preservação legal dos logs de auditoria Marco Civil/LGPD (`radacct`, `radcheck`).
+    - **WireGuard Peer Creation (`wireguardController.js` & `Wireguard.jsx`):** Corrigido retorno do objeto do novo peer criado pelo `wg-easy`, eliminando o falso-positivo "Falha ao criar peer" e exibindo o script RouterOS imediatamente.
+
+13. **Robô WhatsApp / CRM IA com Grounding Dinâmico de Planos (CONCLUÍDO 25/08/2026):**
+    - **Backend (`crmIaController.js`):** Implementado `gerarPromptDoSistema` que consulta diretamente do MySQL:
+      - Tabela `saas_planos` para atendimento Master (Start R$ 97, Pro R$ 197, Enterprise R$ 397, 7 dias grátis).
+      - Tabela `planos` para estabelecimentos comerciais (pacotes de Wi-Fi vendidos no local).
+      - Injeção da URL e link de cadastro oficial (`https://hotspot.nuvycore.online/cadastro`).
+      - Diretrizes rígidas anti-alucinação proibindo a IA de inventar preços ou links inexistentes.
+
+14. **Versionamento e Backup no GitHub (CONCLUÍDO 25/08/2026):**
+    - Repositório oficial conectado: `git@github.com:edsonschueroff-bit/hotspot-nuvypro.git` (Branch `main`).
+    - Autenticação via Deploy Key SSH e blindagem de segurança no `.gitignore` (credenciais `.env`, certificados e logs isolados).
+    - Código 100% sincronizado e pronto para recuperação rápida de desastres (Disaster Recovery).
+
 ---
 
 ### 🎯 PONTO DE RETOMADA FUTURA:
 - **Plano Mestre de QA & Testes de Bancada/Hardware:** [`QA_AUDIT_PLAN.md`](file:///var/www/hotspot/.agents/memory/QA_AUDIT_PLAN.md) pronto para início a partir de **`MTK-01`** (Autenticação RADIUS no roteador físico).
+
 
 
 
