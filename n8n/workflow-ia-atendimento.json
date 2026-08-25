@@ -1,0 +1,697 @@
+{
+  "id": "hotspot-ia-multimodal-v2",
+  "name": "Hotspot NuvyCore - IA Multimodal (Texto, Áudio Whisper & Imagens Vision)",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook-ia-atendimento",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook-evolution",
+      "name": "Webhook Evolution API",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -6848,
+        112
+      ],
+      "webhookId": "hotspot-ia-webhook-id"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst data = body.data || body;\nconst message = data.message || {};\n\n// 1. Anti-Loop Crítico: Ignora mensagens enviadas pelo próprio bot\nif (data.key?.fromMe === true || body.fromMe === true) {\n  throw new Error('Mensagem ignorada: enviada pelo próprio bot (fromMe)');\n}\n\nconst phone = (data.key?.remoteJid || body.remoteJid || '').replace('@s.whatsapp.net', '').replace('@c.us', '');\nconst pushName = data.pushName || body.pushName || 'Cliente';\nconst messageId = data.key?.id || body.messageId || '';\nconst empresaId = data.empresa_id || body.empresa_id || 1;\n\n// 2. Detecta tipo de mensagem recebida\nconst isAudio = !!(message.audioMessage || message.pttMessage);\nconst isImage = !!(message.imageMessage);\nconst isDocument = !!(message.documentMessage);\nconst isMedia = isImage || isDocument;\n\n// 3. Captura base64 e mimetype de imagem/documento\nconst mediaBase64 = (isImage || isDocument) ? (message.base64 || data.base64 || body.base64 || '') : '';\nconst mediaMimeType = message.imageMessage?.mimetype ||\n                     message.documentMessage?.mimetype || 'image/jpeg';\nconst mediaCaption = message.imageMessage?.caption ||\n                     message.documentMessage?.caption || '';\nconst mediaFileName = message.documentMessage?.fileName || '';\n\n// 4. Captura base64 de áudio\nconst audioBase64 = isAudio ? (message.base64 || data.base64 || body.base64 || message.audioMessage?.base64 || '') : '';\nconst audioUrl = message.audioMessage?.url || message.pttMessage?.url || '';\n\nconst text = message.conversation || message.extendedTextMessage?.text || body.text || '';\n\nif (!phone || phone.includes('-')) {\n  throw new Error('Mensagem ignorada: vazia ou de grupo');\n}\n\nreturn [{\n  json: {\n    phone,\n    text,\n    messageId,\n    pushName,\n    empresaId,\n    isAudio,\n    isImage,\n    isDocument,\n    isMedia,\n    audioUrl,\n    audioBase64,\n    mediaBase64,\n    mediaMimeType,\n    mediaCaption,\n    mediaFileName\n  }\n}];"
+      },
+      "id": "node-extrair-dados",
+      "name": "Extrair Dados da Mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6592,
+        96
+      ],
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isAudio }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "node-if-audio",
+      "name": "É Áudio?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -6368,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "audioBase64",
+        "options": {
+          "fileName": "audio.mp3",
+          "mimeType": "audio/mpeg"
+        }
+      },
+      "id": "node-convert-audio",
+      "name": "Converter Áudio para Arquivo",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -6144,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + ($env.OPENAI_API_KEY || '') }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "whisper-1"
+            },
+            {
+              "name": "language",
+              "value": "pt"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-whisper-transcribe",
+      "name": "Whisper Transcrever Áudio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -5920,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const whisperData = $input.first().json;\nconst dadosOriginais = $('Extrair Dados da Mensagem').item.json;\nconst textoTranscrito = whisperData?.text || whisperData?.transcription || '';\nreturn [{\n  json: {\n    ...dadosOriginais,\n    text: textoTranscrito,\n    isAudio: true,\n    isMedia: false\n  }\n}];"
+      },
+      "id": "node-unificar-transcricao",
+      "name": "Unificar Transcrição Áudio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5696,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isMedia }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "node-if-media",
+      "name": "É Imagem ou Documento?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -6368,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const dados = $input.first().json;\nconst mediaBase64 = dados.mediaBase64 || '';\nconst mediaMimeType = dados.mediaMimeType || 'image/jpeg';\nconst mediaCaption = dados.mediaCaption || '';\nconst mediaFileName = dados.mediaFileName || '';\nconst isDocument = dados.isDocument;\n\nconst userContent = [\n  { type: 'image_url', image_url: { url: `data:${mediaMimeType};base64,${mediaBase64}`, detail: 'high' } },\n  { type: 'text', text: mediaCaption ? `O cliente enviou esta imagem com a legenda: \"${mediaCaption}\". Analise e descreva os pontos relevantes (comprovante PIX, tela de login do Wi-Fi, dúvida técnica ou produto).` : 'Analise esta imagem enviada pelo cliente e resuma o conteúdo de forma objetiva.' }\n];\n\nconst messages = [\n  {\n    role: 'system',\n    content: 'Você é um assistente de atendimento analisando imagens enviadas por clientes (comprovantes PIX, telas de conexão Wi-Fi, documentos ou fotos). Seja técnico, conciso e responda em português.'\n  },\n  { role: 'user', content: userContent }\n];\n\nreturn [{ json: { ...dados, visionBodyStr: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 300, messages }) } }];"
+      },
+      "id": "node-preparar-vision",
+      "name": "Preparar Prompt Vision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6144,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + ($env.OPENAI_API_KEY || '') }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.visionBodyStr }}",
+        "options": {}
+      },
+      "id": "node-gpt-vision",
+      "name": "GPT-4o Vision Análise",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -5920,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const visionData = $input.first().json;\nconst dadosOriginais = $('Extrair Dados da Mensagem').item.json;\nconst rawContent = visionData?.choices?.[0]?.message?.content || '';\n\nconst textoEnriquecido = `[CLIENTE ENVIOU ${dadosOriginais.isDocument ? 'DOCUMENTO' : 'IMAGEM'}]\\nAnálise Visual: ${rawContent}${dadosOriginais.mediaCaption ? `\\nLegenda da imagem: \"${dadosOriginais.mediaCaption}\"` : ''}`;\n\nreturn [{\n  json: {\n    ...dadosOriginais,\n    text: textoEnriquecido,\n    isMedia: true\n  }\n}];"
+      },
+      "id": "node-unificar-vision",
+      "name": "Unificar Análise Vision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5696,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let dadosFinal;\ntry {\n  dadosFinal = $('Unificar Análise Vision').item.json;\n  if (dadosFinal) return [{ json: dadosFinal }];\n} catch(e) {}\ntry {\n  dadosFinal = $('Unificar Transcrição Áudio').item.json;\n  if (dadosFinal) return [{ json: dadosFinal }];\n} catch(e) {}\ndadosFinal = $('Extrair Dados da Mensagem').item.json;\nreturn [{ json: dadosFinal }];"
+      },
+      "id": "node-merge-multimodal",
+      "name": "Merge Texto+Áudio+Visão",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5472,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ ($env.HOTSPOT_API_URL || 'http://localhost:3001') + '/api/n8n/ia-contexto?empresa_id=' + ($json.empresaId || 1) + '&telefone=' + $json.phone }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + ($env.HOTSPOT_N8N_TOKEN || 'ia_token_xyz_123') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-buscar-contexto-hotspot",
+      "name": "Buscar Contexto Hotspot API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -5248,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.ia_ativa }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "node-if-ia-ativa",
+      "name": "IA Ativa na Empresa?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -5024,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $('Merge Texto+Áudio+Visão').item.json.text.toLowerCase() }}",
+              "operation": "contains",
+              "value2": "atendente"
+            },
+            {
+              "value1": "={{ $('Merge Texto+Áudio+Visão').item.json.text.toLowerCase() }}",
+              "operation": "contains",
+              "value2": "humano"
+            },
+            {
+              "value1": "={{ $('Merge Texto+Áudio+Visão').item.json.text.toLowerCase() }}",
+              "operation": "contains",
+              "value2": "suporte"
+            }
+          ]
+        },
+        "combineOperation": "any"
+      },
+      "id": "node-if-transbordo",
+      "name": "Pediu Atendente Humano?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -4800,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.EVOLUTION_API_URL || 'http://localhost:8080') + '/message/sendText/' + ($env.EVOLUTION_INSTANCE || 'hotspot') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $('Merge Texto+Áudio+Visão').item.json.phone }}\",\n  \"text\": \"{{ $node['Buscar Contexto Hotspot API'].json.mensagem_transbordo || 'Entendido! Estou transferindo seu atendimento para nossa equipe humana.' }}\"\n}",
+        "options": {}
+      },
+      "id": "node-send-transbordo",
+      "name": "Enviar Msg Transbordo Humano",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -4576,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const contexto = $('Buscar Contexto Hotspot API').item.json;\nconst cliente = $('Merge Texto+Áudio+Visão').item.json;\n\nconst messages = [\n  ...(contexto.openai_messages || [{ role: 'system', content: contexto.system_prompt || 'Você é o assistente virtual do estabelecimento.' }]),\n  { role: 'user', content: cliente.text || 'Olá!' }\n];\n\nreturn [{\n  json: {\n    phone: cliente.phone,\n    empresaId: contexto.empresa_id || 1,\n    userMessage: cliente.text,\n    messagesPayload: JSON.stringify({\n      model: contexto.modelo_ia || 'gpt-4o-mini',\n      messages,\n      temperature: 0.7\n    })\n  }\n}];"
+      },
+      "id": "node-montar-prompt",
+      "name": "Montar Mensagens OpenAI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4576,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + ($env.OPENAI_API_KEY || '') }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.messagesPayload }}",
+        "options": {}
+      },
+      "id": "node-gerar-resposta-gpt",
+      "name": "Gerar Resposta IA (OpenAI GPT)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -4352,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const gptData = $input.first().json;\nconst dadosPrompt = $('Montar Mensagens OpenAI').item.json;\nconst respostaTexto = gptData?.choices?.[0]?.message?.content || 'Olá! Como posso ajudar você hoje?';\n\nreturn [{\n  json: {\n    phone: dadosPrompt.phone,\n    empresaId: dadosPrompt.empresaId,\n    userMessage: dadosPrompt.userMessage,\n    respostaIA: respostaTexto\n  }\n}];"
+      },
+      "id": "node-extrair-resposta-ia",
+      "name": "Extrair Resposta IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4128,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.EVOLUTION_API_URL || 'http://localhost:8080') + '/message/sendText/' + ($env.EVOLUTION_INSTANCE || 'hotspot') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $json.phone }}\",\n  \"text\": {{ JSON.stringify($json.respostaIA) }}\n}",
+        "options": {}
+      },
+      "id": "node-enviar-whatsapp-ia",
+      "name": "Enviar Resposta WhatsApp (Evolution)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -3904,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.HOTSPOT_API_URL || 'http://localhost:3001') + '/api/crm/webhook' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"event\": \"messages.upsert\",\n  \"instance\": \"{{ $env.EVOLUTION_INSTANCE || 'hotspot' }}\",\n  \"data\": {\n    \"key\": {\n      \"remoteJid\": \"{{ $json.phone }}@s.whatsapp.net\",\n      \"fromMe\": true\n    },\n    \"pushName\": \"Assistente IA\",\n    \"message\": {\n      \"conversation\": {{ JSON.stringify($json.respostaIA) }}\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "node-salvar-crm-chat",
+      "name": "Salvar Mensagem no CRM Chat Hotspot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -3680,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\", \"processed\": true }",
+        "options": {}
+      },
+      "id": "node-responder-webhook",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -3456,
+        112
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Evolution API": {
+      "main": [
+        [
+          {
+            "node": "Extrair Dados da Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Dados da Mensagem": {
+      "main": [
+        [
+          {
+            "node": "É Áudio?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É Áudio?": {
+      "main": [
+        [
+          {
+            "node": "Converter Áudio para Arquivo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "É Imagem ou Documento?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Converter Áudio para Arquivo": {
+      "main": [
+        [
+          {
+            "node": "Whisper Transcrever Áudio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Whisper Transcrever Áudio": {
+      "main": [
+        [
+          {
+            "node": "Unificar Transcrição Áudio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unificar Transcrição Áudio": {
+      "main": [
+        [
+          {
+            "node": "Merge Texto+Áudio+Visão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É Imagem ou Documento?": {
+      "main": [
+        [
+          {
+            "node": "Preparar Prompt Vision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Texto+Áudio+Visão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Prompt Vision": {
+      "main": [
+        [
+          {
+            "node": "GPT-4o Vision Análise",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Vision Análise": {
+      "main": [
+        [
+          {
+            "node": "Unificar Análise Vision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unificar Análise Vision": {
+      "main": [
+        [
+          {
+            "node": "Merge Texto+Áudio+Visão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Texto+Áudio+Visão": {
+      "main": [
+        [
+          {
+            "node": "Buscar Contexto Hotspot API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Contexto Hotspot API": {
+      "main": [
+        [
+          {
+            "node": "IA Ativa na Empresa?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA Ativa na Empresa?": {
+      "main": [
+        [
+          {
+            "node": "Pediu Atendente Humano?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pediu Atendente Humano?": {
+      "main": [
+        [
+          {
+            "node": "Enviar Msg Transbordo Humano",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar Mensagens OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Msg Transbordo Humano": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Mensagens OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Gerar Resposta IA (OpenAI GPT)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar Resposta IA (OpenAI GPT)": {
+      "main": [
+        [
+          {
+            "node": "Extrair Resposta IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Resposta IA": {
+      "main": [
+        [
+          {
+            "node": "Enviar Resposta WhatsApp (Evolution)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Resposta WhatsApp (Evolution)": {
+      "main": [
+        [
+          {
+            "node": "Salvar Mensagem no CRM Chat Hotspot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Mensagem no CRM Chat Hotspot": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

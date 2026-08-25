@@ -1,0 +1,61 @@
+{
+  "name": "Nuvy Pro - Gestão Inteligente de Wi-Fi & Marketing",
+  "short_name": "Nuvy Pro",
+  "description": "Plataforma de Gestão de Hotspot Wi-Fi, Cupons, Leads, CRM e Fidelidade",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/nuvycore.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Validar Cupons",
+      "short_name": "Cupons",
+      "description": "Validador de cupons de desconto e resgate no balcão",
+      "url": "/admin/default/cupons",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Chat & Leads",
+      "short_name": "Leads",
+      "description": "CRM e Chat ao vivo com clientes conectados",
+      "url": "/admin/default/leads",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dashboard & Vendas",
+      "short_name": "Dashboard",
+      "description": "Painel de controle e métricas do hotspot",
+      "url": "/admin/default",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+}

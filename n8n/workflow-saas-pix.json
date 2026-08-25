@@ -1,0 +1,152 @@
+{
+    "id": "saas-pix-bot-v1",
+    "name": "Hotspot SaaS - 2a Via PIX WhatsApp Bot",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "webhook-whatsapp-saas",
+                "options": {}
+            },
+            "name": "Webhook Evolution API",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ],
+            "webhookId": "hotspot-whatsapp-webhook"
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.body.data.message.conversation || $json.body.data.message.extendedTextMessage.text || '' }}",
+                            "operation": "regex",
+                            "value2": "(pix|fatura|cobrança|cobranca|2a via|2ª via|segunda via|boleto|pagar|mensalidade)"
+                        }
+                    ]
+                }
+            },
+            "name": "Detectar Intenção PIX",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                470,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.HOTSPOT_API_URL || 'http://localhost:3001' }}/api/saas-faturas/bot/consulta-pix",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"telefone\": \"{{ $node['Webhook Evolution API'].json.body.data.key.remoteJid.replace('@s.whatsapp.net', '') }}\"\n}",
+                "options": {}
+            },
+            "name": "Consultar Fatura Hotspot API",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                690,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.sucesso }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Encontrou Resposta?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                910,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.EVOLUTION_API_URL || 'http://localhost:8080' }}/message/sendText/{{ $env.EVOLUTION_INSTANCE || 'hotspot' }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "apikey",
+                            "value": "={{ $env.EVOLUTION_API_KEY }}"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"number\": \"{{ $node['Webhook Evolution API'].json.body.data.key.remoteJid.replace('@s.whatsapp.net', '') }}\",\n  \"text\": \"{{ $json.mensagem_formatada }}\"\n}",
+                "options": {}
+            },
+            "name": "Enviar Mensagem WhatsApp (Evolution)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1130,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook Evolution API": {
+            "main": [
+                [
+                    {
+                        "node": "Detectar Intenção PIX",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Detectar Intenção PIX": {
+            "main": [
+                [
+                    {
+                        "node": "Consultar Fatura Hotspot API",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Consultar Fatura Hotspot API": {
+            "main": [
+                [
+                    {
+                        "node": "Encontrou Resposta?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Encontrou Resposta?": {
+            "main": [
+                [
+                    {
+                        "node": "Enviar Mensagem WhatsApp (Evolution)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    }
+}
