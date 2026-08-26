@@ -92,12 +92,13 @@ async function liberarUsuario({ mac, ip, plano, empresa_id, cpf, telefone, clien
       checkValues.flat()
     );
 
-    // Insere perfil de banda e timeout
+    // Insere perfil de banda, timeout de sessão e intervalo de interim accounting (120s)
     await db.query(
       `INSERT INTO radreply (username, attribute, op, value) VALUES
         (?, 'Mikrotik-Rate-Limit', ':=', ?),
-        (?, 'Session-Timeout', ':=', ?)`,
-      [username, rateLimit, username, String(tempoSegundos)]
+        (?, 'Session-Timeout', ':=', ?),
+        (?, 'Acct-Interim-Interval', ':=', '120')`,
+      [username, rateLimit, username, String(tempoSegundos), username]
     );
 
     // Associa a grupo/plano

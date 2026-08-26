@@ -816,6 +816,7 @@ export default function Empresas() {
                         <option value="adimplente">Adimplente (Em Dia)</option>
                         <option value="inadimplente">Inadimplente (Em Atraso)</option>
                         <option value="suspenso">Suspenso</option>
+                        <option value="liberado_confianca">🔓 Liberado de Confiança</option>
                       </select>
                     </div>
                   </div>

@@ -39,6 +39,11 @@ export default function Compliance() {
 
   const token = localStorage.getItem("admin_token");
 
+  React.useEffect(() => {
+    buscar(1);
+    // eslint-disable-next-line
+  }, []);
+
   const buildParams = (extraPage) => {
     const params = new URLSearchParams();
     if (cpf.trim()) params.set("cpf", cpf.trim());

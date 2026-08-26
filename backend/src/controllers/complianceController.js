@@ -38,12 +38,14 @@ exports.buscarLogs = async (req, res) => {
       params.push(`%${username}%`);
     }
     if (data_inicio) {
+      const dInicio = data_inicio.length === 10 ? `${data_inicio} 00:00:00` : (data_inicio.includes("T") && data_inicio.length === 16 ? `${data_inicio.replace("T", " ")}:00` : data_inicio);
       where.push("inicio_conexao >= ?");
-      params.push(data_inicio);
+      params.push(dInicio);
     }
     if (data_fim) {
-      where.push("fim_conexao <= ?");
-      params.push(data_fim);
+      const dFim = data_fim.length === 10 ? `${data_fim} 23:59:59` : (data_fim.includes("T") && data_fim.length === 16 ? `${data_fim.replace("T", " ")}:59` : data_fim);
+      where.push("inicio_conexao <= ?");
+      params.push(dFim);
     }
 
     const whereClause = `WHERE ${where.join(" AND ")}`;
@@ -104,12 +106,14 @@ exports.exportarCSV = async (req, res) => {
       params.push(`%${username}%`);
     }
     if (data_inicio) {
+      const dInicio = data_inicio.length === 10 ? `${data_inicio} 00:00:00` : (data_inicio.includes("T") && data_inicio.length === 16 ? `${data_inicio.replace("T", " ")}:00` : data_inicio);
       where.push("inicio_conexao >= ?");
-      params.push(data_inicio);
+      params.push(dInicio);
     }
     if (data_fim) {
-      where.push("fim_conexao <= ?");
-      params.push(data_fim);
+      const dFim = data_fim.length === 10 ? `${data_fim} 23:59:59` : (data_fim.includes("T") && data_fim.length === 16 ? `${data_fim.replace("T", " ")}:59` : data_fim);
+      where.push("inicio_conexao <= ?");
+      params.push(dFim);
     }
 
     const whereClause = `WHERE ${where.join(" AND ")}`;

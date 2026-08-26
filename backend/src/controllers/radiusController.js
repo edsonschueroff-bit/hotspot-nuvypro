@@ -163,12 +163,14 @@ async function deletarUsuarioRadius(req, res) {
   }
 }
 
+const { sqlSessoesAtivas } = require("../services/sessionJanitorService");
+
 const listarSessoesAtivas = async (req, res) => {
   try {
     const [sessoes] = await db.query(`
       SELECT
         ra.username,
-        ll.cpf,
+        COALESCE(ll.cpf, ld.cpf) AS cpf,
         ra.callingstationid AS mac,
         ra.framedipaddress AS ip,
         ra.nasipaddress AS gateway,
@@ -177,14 +179,16 @@ const listarSessoesAtivas = async (req, res) => {
         ra.acctinputoctets AS bytes_entrada,
         ra.acctoutputoctets AS bytes_saida
       FROM radacct ra
-      INNER JOIN mikrotiks m ON m.ip COLLATE utf8mb4_unicode_ci = ra.nasipaddress COLLATE utf8mb4_unicode_ci
+      LEFT JOIN mikrotiks m ON m.ip COLLATE utf8mb4_unicode_ci = ra.nasipaddress COLLATE utf8mb4_unicode_ci
+      LEFT JOIN radius_users ru ON ru.username COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci
       LEFT JOIN (
-         SELECT mac, empresa_id, MAX(cpf) as cpf
+         SELECT mac COLLATE utf8mb4_unicode_ci as mac, empresa_id, MAX(cpf) as cpf
          FROM leads
          GROUP BY mac, empresa_id
-      ) ll ON ll.mac COLLATE utf8mb4_unicode_ci = ra.callingstationid COLLATE utf8mb4_unicode_ci AND ll.empresa_id = m.empresa_id
-      WHERE ra.acctstoptime IS NULL
-        AND m.empresa_id = ?
+      ) ll ON ll.mac = ra.callingstationid COLLATE utf8mb4_unicode_ci AND ll.empresa_id = COALESCE(m.empresa_id, ru.empresa_id)
+      LEFT JOIN leads ld ON (ld.telefone COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci OR ld.cpf COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci)
+      WHERE ${sqlSessoesAtivas('ra')}
+        AND COALESCE(m.empresa_id, ru.empresa_id) = ?
       ORDER BY ra.acctstarttime DESC
     `, [req.empresa_id]);
 

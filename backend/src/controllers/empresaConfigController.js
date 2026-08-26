@@ -1,8 +1,9 @@
 const db = require("../../db");
 const axios = require("axios");
 const { enviarTesteAlerta } = require("../services/ownerAlertsService");
+const emailService = require("../services/emailService");
 
-const VALID_TYPES = ["mercadopago", "efi", "whatsapp", "oauth", "alertas_dono"];
+const VALID_TYPES = ["mercadopago", "efi", "whatsapp", "oauth", "alertas_dono", "smtp"];
 
 // GET /api/empresa-config/:tipo
 exports.obterConfig = async (req, res) => {
@@ -109,3 +110,34 @@ exports.testarAlertasDono = async (req, res) => {
     res.status(500).json({ success: false, message: "Erro ao disparar teste de alerta", error: err.message });
   }
 };
+
+// POST /api/empresa-config/smtp/testar
+exports.testarConexaoSmtp = async (req, res) => {
+  try {
+    const { smtp_host, smtp_port, smtp_user, smtp_pass, smtp_secure, remetente_nome, remetente_email, email_resposta, email_destino } = req.body;
+
+    const resultado = await emailService.testarConexaoSmtp({
+      empresaId: req.empresa_id,
+      dados: {
+        smtp_host,
+        smtp_port,
+        smtp_user,
+        smtp_pass,
+        smtp_secure,
+        remetente_nome,
+        remetente_email,
+        email_resposta
+      },
+      emailDestino: email_destino
+    });
+
+    res.json(resultado);
+  } catch (err) {
+    console.error("Erro ao testar conexão SMTP:", err.message);
+    res.status(400).json({
+      success: false,
+      message: err.message || "Falha ao conectar ou autenticar no servidor SMTP."
+    });
+  }
+};
+

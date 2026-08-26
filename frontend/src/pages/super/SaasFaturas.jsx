@@ -22,12 +22,19 @@ export default function SaasFaturas() {
 
   const [showModal, setShowModal] = useState(false);
   const [showComissaoModal, setShowComissaoModal] = useState(false);
+  const [showConfiancaModal, setShowConfiancaModal] = useState(false);
   const [notifModal, setNotifModal] = useState({ show: false, texto: "", link: "" });
 
   const [selectedEmpresaId, setSelectedEmpresaId] = useState("");
   const [previewData, setPreviewData] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [dataVencimentoGerar, setDataVencimentoGerar] = useState(new Date().toISOString().split('T')[0]);
+
+  const [confiancaForm, setConfiancaForm] = useState({
+    empresa_id: "",
+    dias: 3,
+    motivo: "Concedido pelo Super Admin"
+  });
 
   const [form, setForm] = useState({
     empresa_id: "",
@@ -189,6 +196,38 @@ export default function SaasFaturas() {
     }
   };
 
+  const handleAbrirConfiancaModal = (empresaId = "") => {
+    setConfiancaForm({
+      empresa_id: empresaId || empresas[0]?.id || "",
+      dias: 3,
+      motivo: "Concedido pelo Super Admin"
+    });
+    setShowConfiancaModal(true);
+  };
+
+  const handleLiberarConfiancaAdmin = async (e) => {
+    e?.preventDefault();
+    if (!confiancaForm.empresa_id) return;
+    try {
+      const res = await fetch("/api/saas-faturas/liberacao-confianca-admin", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(confiancaForm)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.message || "Erro ao conceder liberação");
+        return;
+      }
+      alert("✅ " + data.message);
+      setShowConfiancaModal(false);
+      fetchFaturas();
+      fetchEmpresas();
+    } catch (err) {
+      alert("Erro ao conectar com servidor");
+    }
+  };
+
   const handleExecutarDisparosManuais = async () => {
     try {
       const res = await fetch("/api/saas-faturas/disparos-whatsapp", { method: "POST", headers });
@@ -228,6 +267,9 @@ export default function SaasFaturas() {
               </Link>
               <SecondaryButton onClick={handleExecutarDisparosManuais} className="flex items-center gap-1.5 text-emerald-700 hover:bg-emerald-50 border-emerald-200">
                 <span>📲</span> Lembretes WhatsApp
+              </SecondaryButton>
+              <SecondaryButton onClick={() => handleAbrirConfiancaModal()} className="flex items-center gap-1.5 text-amber-700 hover:bg-amber-50 border-amber-200">
+                <span>🔓</span> Liberação de Confiança
               </SecondaryButton>
               <SecondaryButton onClick={handleAbrirComissaoModal} className="flex items-center gap-1.5 text-[#2563eb] hover:bg-blue-50 border-blue-200">
                 <span>⚡</span> Gerar com Comissão
@@ -386,6 +428,15 @@ export default function SaasFaturas() {
 
                         <td className="px-5 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            {f.status !== 'pago' && (
+                              <button
+                                onClick={() => handleAbrirConfiancaModal(f.empresa_id)}
+                                className="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-md text-[11px] font-600 transition-colors cursor-pointer"
+                                title="Conceder Liberação de Confiança"
+                              >
+                                🔓 Liberar
+                              </button>
+                            )}
                             {f.status !== 'pago' && (
                               <button
                                 onClick={() => handleDarBaixa(f.id)}
@@ -616,6 +667,89 @@ export default function SaasFaturas() {
               </SecondaryButton>
             </div>
           </div>
+        </Modal>
+
+        {/* Modal Liberação de Confiança */}
+        <Modal
+          isOpen={showConfiancaModal}
+          onClose={() => setShowConfiancaModal(false)}
+          title="Conceder Liberação de Confiança (Promessa de Pagamento)"
+        >
+          <form onSubmit={handleLiberarConfiancaAdmin} className="space-y-4">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-[12px] text-amber-900 flex items-start gap-2">
+              <span className="text-base">🔓</span>
+              <p>
+                A <strong>Liberação de Confiança</strong> reativa temporariamente o acesso do cliente ao painel e ao Wi-Fi comercial enquanto ele organiza o pagamento.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-600 text-slate-600 uppercase mb-1">Empresa Cliente</label>
+              <select
+                value={confiancaForm.empresa_id}
+                onChange={(e) => setConfiancaForm({ ...confiancaForm, empresa_id: e.target.value })}
+                className="ds-input bg-white"
+                required
+              >
+                <option value="">Selecione uma empresa...</option>
+                {empresas.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome} (Status: {e.status_financeiro || 'trial'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-600 text-slate-600 uppercase mb-1">Dias de Tolerância / Liberação</label>
+              <div className="grid grid-cols-4 gap-2 mb-2">
+                {[3, 5, 7, 15].map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setConfiancaForm({ ...confiancaForm, dias: d })}
+                    className={`py-1.5 text-xs font-semibold rounded-md border cursor-pointer transition-colors ${
+                      confiancaForm.dias === d
+                        ? 'bg-[#2563eb] text-white border-[#2563eb]'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    +{d} Dias
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                min="1"
+                max="90"
+                value={confiancaForm.dias}
+                onChange={(e) => setConfiancaForm({ ...confiancaForm, dias: parseInt(e.target.value, 10) || 1 })}
+                className="ds-input"
+                placeholder="Ou digite o número de dias..."
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-600 text-slate-600 uppercase mb-1">Motivo / Observação</label>
+              <input
+                type="text"
+                value={confiancaForm.motivo}
+                onChange={(e) => setConfiancaForm({ ...confiancaForm, motivo: e.target.value })}
+                placeholder="Ex: Cliente pediu prazo até sexta-feira via WhatsApp"
+                className="ds-input"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#e2e8f0]">
+              <SecondaryButton type="button" onClick={() => setShowConfiancaModal(false)}>
+                Cancelar
+              </SecondaryButton>
+              <PrimaryButton type="submit" className="bg-amber-600 hover:bg-amber-700 border-amber-600">
+                <span>🔓</span> Conceder Liberação
+              </PrimaryButton>
+            </div>
+          </form>
         </Modal>
 
       </div>

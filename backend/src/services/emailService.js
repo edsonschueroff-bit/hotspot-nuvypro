@@ -4,12 +4,12 @@ const path = require("path");
 const db = require("../../db");
 
 /**
- * Obtém a configuração de SMTP e e-mail de destino do banco de dados ou do file .env
+ * Obtém a configuração de SMTP e e-mail de backup (Super Admin / Global)
  */
 async function obterConfigEmailBackup() {
     try {
         const [[config]] = await db.query(
-            `SELECT config_json FROM empresa_configs WHERE empresa_id = 1 AND config_type = 'backup_email' LIMIT 1`
+            `SELECT config_json FROM empresa_configs WHERE empresa_id = 1 AND (config_type = 'backup_email' OR config_type = 'smtp') ORDER BY config_type = 'smtp' DESC LIMIT 1`
         );
 
         let emailDestino = process.env.BACKUP_EMAIL_DESTINO || "contato@nuvycore.online";
@@ -50,7 +50,188 @@ async function obterConfigEmailBackup() {
 }
 
 /**
- * Envia o arquivo de backup (.tar.gz) por e-mail para o proprietário
+ * Obtém a configuração de SMTP multi-tenant para uma empresa específica
+ * Caso a empresa não tenha SMTP configurado ou esteja inativo, faz fallback para o SMTP global
+ */
+async function obterConfigEmail(empresaId = null) {
+    try {
+        if (empresaId) {
+            const [[tenantConfig]] = await db.query(
+                `SELECT config_json FROM empresa_configs WHERE empresa_id = ? AND config_type = 'smtp' LIMIT 1`,
+                [empresaId]
+            );
+
+            if (tenantConfig && tenantConfig.config_json) {
+                const parsed = typeof tenantConfig.config_json === 'string'
+                    ? JSON.parse(tenantConfig.config_json)
+                    : tenantConfig.config_json;
+
+                // Se a empresa configurou e está ativo com dados válidos
+                if (parsed && (parsed.ativo === undefined || parsed.ativo === true || parsed.ativo === 'true') && parsed.smtp_host && parsed.smtp_user && parsed.smtp_pass) {
+                    return {
+                        ativo: true,
+                        empresa_id: empresaId,
+                        smtp_host: parsed.smtp_host.trim(),
+                        smtp_port: parseInt(parsed.smtp_port || "587"),
+                        smtp_user: parsed.smtp_user.trim(),
+                        smtp_pass: parsed.smtp_pass.trim(),
+                        smtp_secure: parsed.smtp_secure === true || parsed.smtp_secure === "true" || parseInt(parsed.smtp_port) === 465,
+                        remetente_nome: parsed.remetente_nome ? parsed.remetente_nome.trim() : null,
+                        remetente_email: parsed.remetente_email ? parsed.remetente_email.trim() : parsed.smtp_user.trim(),
+                        email_resposta: parsed.email_resposta ? parsed.email_resposta.trim() : null,
+                        is_custom: true
+                    };
+                }
+            }
+        }
+
+        // Fallback para o SMTP Global / Super Admin (empresa_id = 1 ou .env)
+        const globalBackup = await obterConfigEmailBackup();
+        return {
+            ativo: Boolean(globalBackup.smtp_host && globalBackup.smtp_user && globalBackup.smtp_pass),
+            empresa_id: 1,
+            smtp_host: globalBackup.smtp_host,
+            smtp_port: globalBackup.smtp_port,
+            smtp_user: globalBackup.smtp_user,
+            smtp_pass: globalBackup.smtp_pass,
+            smtp_secure: globalBackup.smtp_secure,
+            remetente_nome: "Nuvy Pro",
+            remetente_email: globalBackup.smtp_user || "contato@nuvycore.online",
+            email_resposta: null,
+            is_custom: false
+        };
+    } catch (err) {
+        console.warn("[Email Service ⚠️] Erro ao obter config multi-tenant:", err.message);
+        return {
+            ativo: false,
+            empresa_id: empresaId,
+            is_custom: false
+        };
+    }
+}
+
+/**
+ * Cria o transportador Nodemailer com base nas configurações da empresa ou payload override
+ */
+async function criarTransporter(empresaId = null, configOverride = null) {
+    let config = configOverride;
+
+    if (!config) {
+        config = await obterConfigEmail(empresaId);
+    }
+
+    if (!config.smtp_host || !config.smtp_user || !config.smtp_pass) {
+        throw new Error("Configurações SMTP incompletas (Host, Usuário ou Senha não definidos).");
+    }
+
+    const port = parseInt(config.smtp_port || "587");
+    const isSecure = config.smtp_secure === true || config.smtp_secure === "true" || port === 465;
+
+    const transporter = nodemailer.createTransport({
+        host: config.smtp_host,
+        port: port,
+        secure: isSecure, // true para 465 (SSL), false para 587/outras (STARTTLS)
+        auth: {
+            user: config.smtp_user,
+            pass: config.smtp_pass,
+        },
+        tls: {
+            rejectUnauthorized: false
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000
+    });
+
+    return { transporter, config };
+}
+
+/**
+ * Testa a conexão SMTP e envia um e-mail de teste formatado
+ */
+async function testarConexaoSmtp({ empresaId, dados, emailDestino }) {
+    try {
+        const port = parseInt(dados.smtp_port || "587");
+        const isSecure = dados.smtp_secure === true || dados.smtp_secure === "true" || port === 465;
+
+        const configOverride = {
+            smtp_host: dados.smtp_host?.trim(),
+            smtp_port: port,
+            smtp_user: dados.smtp_user?.trim(),
+            smtp_pass: dados.smtp_pass?.trim(),
+            smtp_secure: isSecure,
+            remetente_nome: dados.remetente_nome?.trim() || "Nuvy Pro",
+            remetente_email: dados.remetente_email?.trim() || dados.smtp_user?.trim(),
+            email_resposta: dados.email_resposta?.trim() || null
+        };
+
+        if (!configOverride.smtp_host || !configOverride.smtp_user || !configOverride.smtp_pass) {
+            throw new Error("Preencha Servidor SMTP, Usuário e Senha para realizar o teste.");
+        }
+
+        const { transporter, config } = await criarTransporter(empresaId, configOverride);
+
+        // 1. Validação de Handshake
+        await transporter.verify();
+
+        // 2. Se informou e-mail de destino, envia e-mail de teste formatado
+        if (emailDestino && emailDestino.trim()) {
+            const dest = emailDestino.trim();
+            const fromHeader = `"${config.remetente_nome || 'Nuvy Pro'}" <${config.remetente_email || config.smtp_user}>`;
+
+            const mailOptions = {
+                from: fromHeader,
+                to: dest,
+                subject: `🧪 Teste de Conexão SMTP - ${config.remetente_nome || 'Nuvy Pro'}`,
+                replyTo: config.email_resposta || undefined,
+                html: `
+                    <div style="font-family: Arial, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
+                        <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
+                            <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #2563eb;">
+                                <h1 style="color: #0f172a; margin: 0; font-size: 22px; font-weight: 800;">✅ Conexão SMTP Validada!</h1>
+                                <p style="color: #64748b; font-size: 13px; margin-top: 6px;">Nuvy Pro &bull; Plataforma de Gestão Wi-Fi</p>
+                            </div>
+
+                            <div style="padding: 24px 0;">
+                                <p style="font-size: 15px; color: #334155;">Parabéns!</p>
+                                <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+                                    As configurações do seu servidor SMTP próprio foram testadas com sucesso. A partir de agora, seus e-mails de boas-vindas ao Wi-Fi e campanhas do CRM serão entregues com o remetente oficial da sua empresa.
+                                </p>
+
+                                <div style="background-color: #f1f5f9; padding: 16px; border-radius: 10px; margin: 20px 0; font-size: 13px; line-height: 1.6;">
+                                    <p style="margin: 0; color: #334155;"><strong>🏢 Remetente:</strong> ${config.remetente_nome || 'Não especificado'}</p>
+                                    <p style="margin: 4px 0 0 0; color: #334155;"><strong>📧 E-mail From:</strong> ${config.remetente_email || config.smtp_user}</p>
+                                    <p style="margin: 4px 0 0 0; color: #334155;"><strong>🌐 Servidor SMTP:</strong> ${config.smtp_host}:${config.smtp_port}</p>
+                                    <p style="margin: 4px 0 0 0; color: #334155;"><strong>🔒 Segurança:</strong> ${config.smtp_secure ? 'SSL/TLS (Porta 465)' : 'STARTTLS (Porta 587)'}</p>
+                                    <p style="margin: 4px 0 0 0; color: #334155;"><strong>📅 Data do Teste:</strong> ${new Date().toLocaleString("pt-BR")}</p>
+                                </div>
+                            </div>
+
+                            <div style="border-top: 1px solid #f1f5f9; padding-top: 20px; text-align: center; font-size: 11px; color: #94a3b8;">
+                                Mensagem gerada automaticamente pelo teste de diagnóstico SMTP do Nuvy Pro.
+                            </div>
+                        </div>
+                    </div>
+                `
+            };
+
+            await transporter.sendMail(mailOptions);
+        }
+
+        return {
+            success: true,
+            message: emailDestino 
+                ? `Conexão SMTP validada com sucesso! E-mail de teste enviado para ${emailDestino}.`
+                : "Conexão e credenciais do servidor SMTP validadas com sucesso!"
+        };
+    } catch (err) {
+        console.error("[Email Service ❌] Erro ao testar SMTP:", err.message);
+        throw new Error(err.message || "Falha na comunicação com o servidor SMTP.");
+    }
+}
+
+/**
+ * Envia o arquivo de backup (.tar.gz) por e-mail para o proprietário (Super Admin)
  */
 async function enviarBackupPorEmail({ filename, filePath, sizeMb, duracaoSec, disparadoPor }) {
     try {
@@ -69,7 +250,7 @@ async function enviarBackupPorEmail({ filename, filePath, sizeMb, duracaoSec, di
         const transporter = nodemailer.createTransport({
             host: config.smtp_host,
             port: config.smtp_port,
-            secure: config.smtp_secure, // true para 465, false para 587/outras
+            secure: config.smtp_secure,
             auth: {
                 user: config.smtp_user,
                 pass: config.smtp_pass,
@@ -99,14 +280,14 @@ async function enviarBackupPorEmail({ filename, filePath, sizeMb, duracaoSec, di
         const downloadUrl = `https://${domain}/super/backups`;
 
         const mailOptions = {
-            from: `"NuvyCore Backup Engine" <${config.smtp_user}>`,
+            from: `"Nuvy Pro Backup Engine" <${config.smtp_user}>`,
             to: config.email_destino,
             subject: `💾 Backup do Sistema Concluído - ${filename}`,
             html: `
                 <div style="font-family: Arial, sans-serif; background-color: #f8fafc; padding: 20px; color: #1e293b;">
                     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 24px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
                         <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #2563eb;">
-                            <h2 style="color: #0f172a; margin: 0; font-size: 20px;">🛡️ NuvyCore SaaS Backup Engine</h2>
+                            <h2 style="color: #0f172a; margin: 0; font-size: 20px;">🛡️ Nuvy Pro Backup Engine</h2>
                             <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Cópia de Segurança Automatizada do Sistema</p>
                         </div>
                         
@@ -147,7 +328,7 @@ async function enviarBackupPorEmail({ filename, filePath, sizeMb, duracaoSec, di
                         </div>
 
                         <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center; font-size: 11px; color: #94a3b8;">
-                            Este e-mail foi gerado automaticamente pelo NuvyCore SaaS Hotspot Engine &copy; 2026.
+                            Este e-mail foi gerado automaticamente pelo Nuvy Pro Hotspot Engine &copy; 2026.
                         </div>
                     </div>
                 </div>
@@ -166,7 +347,7 @@ async function enviarBackupPorEmail({ filename, filePath, sizeMb, duracaoSec, di
 }
 
 /**
- * Salva a configuração de e-mail de backup no banco de dados
+ * Salva a configuração de e-mail de backup no banco de dados (Super Admin)
  */
 async function salvarConfigEmailBackup(dados) {
     const jsonStr = JSON.stringify({
@@ -190,56 +371,32 @@ async function salvarConfigEmailBackup(dados) {
 }
 
 /**
- * Cria o transportador Nodemailer com base nas configurações ativas
- */
-async function criarTransporter() {
-    const config = await obterConfigEmailBackup();
-
-    if (!config.smtp_host || !config.smtp_user || !config.smtp_pass) {
-        throw new Error("Configurações SMTP não preenchidas no sistema.");
-    }
-
-    return {
-        transporter: nodemailer.createTransport({
-            host: config.smtp_host,
-            port: config.smtp_port,
-            secure: config.smtp_secure,
-            auth: {
-                user: config.smtp_user,
-                pass: config.smtp_pass,
-            },
-            tls: {
-                rejectUnauthorized: false
-            }
-        }),
-        config
-    };
-}
-
-/**
  * Envia e-mail de Redefinição / Recuperação de Senha
  */
-async function enviarEmailResetSenha({ email, nome, token }) {
+async function enviarEmailResetSenha({ email, nome, token, empresaId = null }) {
     try {
-        const { transporter, config } = await criarTransporter();
+        const { transporter, config } = await criarTransporter(empresaId);
         const domain = process.env.SYSTEM_DOMAIN || "hotspot.nuvycore.online";
         const resetUrl = `https://${domain}/redefinir-senha?token=${token}`;
 
+        const fromHeader = `"${config.remetente_nome || 'Nuvy Pro Suporte'}" <${config.remetente_email || config.smtp_user}>`;
+
         const mailOptions = {
-            from: `"NuvyCore Suporte" <${config.smtp_user}>`,
+            from: fromHeader,
             to: email,
-            subject: `🔑 Recuperação de Senha - NuvyCore SaaS`,
+            subject: `🔑 Recuperação de Senha - Nuvy Pro`,
+            replyTo: config.email_resposta || undefined,
             html: `
                 <div style="font-family: Arial, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
                     <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
                         <div style="text-align: center; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9;">
                             <h1 style="color: #0f172a; margin: 0; font-size: 22px; font-weight: 800;">🔑 Redefinição de Senha</h1>
-                            <p style="color: #64748b; font-size: 13px; margin-top: 6px;">NuvyCore Hotspot Platform</p>
+                            <p style="color: #64748b; font-size: 13px; margin-top: 6px;">Nuvy Pro Hotspot Platform</p>
                         </div>
 
                         <div style="padding: 24px 0;">
                             <p style="font-size: 15px; color: #334155;">Olá, <strong>${nome || 'Usuário'}</strong>!</p>
-                            <p style="font-size: 14px; color: #475569; line-height: 1.6;">Recebemos uma solicitação para redefinir a senha da sua conta de acesso ao NuvyCore SaaS. Para criar uma nova senha, clique no botão seguro abaixo:</p>
+                            <p style="font-size: 14px; color: #475569; line-height: 1.6;">Recebemos uma solicitação para redefinir a senha da sua conta de acesso ao Nuvy Pro. Para criar uma nova senha, clique no botão seguro abaixo:</p>
 
                             <div style="text-align: center; margin: 32px 0;">
                                 <a href="${resetUrl}" style="background-color: #2563eb; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(37,99,235,0.3);">
@@ -256,7 +413,7 @@ async function enviarEmailResetSenha({ email, nome, token }) {
                         </div>
 
                         <div style="border-top: 1px solid #f1f5f9; padding-top: 20px; text-align: center; font-size: 11px; color: #94a3b8;">
-                            Equipe NuvyCore SaaS &copy; 2026. Todos os direitos reservados.
+                            Equipe Nuvy Pro &copy; 2026. Todos os direitos reservados.
                         </div>
                     </div>
                 </div>
@@ -281,16 +438,19 @@ async function enviarEmailBoasVindasEmpresa({ email, nome, empresaNome, slug }) 
         const domain = process.env.SYSTEM_DOMAIN || "hotspot.nuvycore.online";
         const loginUrl = `https://${domain}/admin/${slug}`;
 
+        const fromHeader = `"${config.remetente_nome || 'Nuvy Pro'}" <${config.remetente_email || config.smtp_user}>`;
+
         const mailOptions = {
-            from: `"NuvyCore SaaS" <${config.smtp_user}>`,
+            from: fromHeader,
             to: email,
-            subject: `🚀 Bem-vindo ao NuvyCore - ${empresaNome}`,
+            subject: `🚀 Bem-vindo ao Nuvy Pro - ${empresaNome}`,
+            replyTo: config.email_resposta || undefined,
             html: `
                 <div style="font-family: Arial, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
                     <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
                         <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #10b981;">
                             <h1 style="color: #0f172a; margin: 0; font-size: 22px; font-weight: 800;">🎉 Sua conta está pronta!</h1>
-                            <p style="color: #64748b; font-size: 13px; margin-top: 6px;">Plataforma Gestora de Wi-Fi Hotspot & CRM</p>
+                            <p style="color: #64748b; font-size: 13px; margin-top: 6px;">Plataforma Gestora de Wi-Fi Hotspot & Marketing</p>
                         </div>
 
                         <div style="padding: 24px 0;">
@@ -311,7 +471,7 @@ async function enviarEmailBoasVindasEmpresa({ email, nome, empresaNome, slug }) 
                         </div>
 
                         <div style="border-top: 1px solid #f1f5f9; padding-top: 20px; text-align: center; font-size: 11px; color: #94a3b8;">
-                            Equipe NuvyCore SaaS &copy; 2026.
+                            Equipe Nuvy Pro &copy; 2026.
                         </div>
                     </div>
                 </div>
@@ -330,9 +490,9 @@ async function enviarEmailBoasVindasEmpresa({ email, nome, empresaNome, slug }) 
 /**
  * Envia e-mail de Boas-Vindas para Visitante que conectou no Wi-Fi Captive Portal (B2C)
  */
-async function enviarEmailBoasVindasWifi({ email, leadNome, empresaNome, portalConfig }) {
+async function enviarEmailBoasVindasWifi({ email, leadNome, empresaNome, portalConfig, empresaId = null }) {
     try {
-        const { transporter, config } = await criarTransporter();
+        const { transporter, config } = await criarTransporter(empresaId);
 
         const assunto = portalConfig.email_welcome_subject || `📶 Conectado ao Wi-Fi - ${empresaNome}`;
         const mensagemCustom = portalConfig.email_welcome_body || `Obrigado por se conectar ao nosso Wi-Fi! Aproveite sua conexão de alta velocidade.`;
@@ -351,10 +511,14 @@ async function enviarEmailBoasVindasWifi({ email, leadNome, empresaNome, portalC
             `;
         }
 
+        const senderDisplayName = config.remetente_nome || `${empresaNome} Wi-Fi`;
+        const fromHeader = `"${senderDisplayName}" <${config.remetente_email || config.smtp_user}>`;
+
         const mailOptions = {
-            from: `"${empresaNome} Wi-Fi" <${config.smtp_user}>`,
+            from: fromHeader,
             to: email,
             subject: assunto,
+            replyTo: config.email_resposta || undefined,
             html: `
                 <div style="font-family: Arial, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
                     <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
@@ -371,7 +535,7 @@ async function enviarEmailBoasVindasWifi({ email, leadNome, empresaNome, portalC
                         </div>
 
                         <div style="border-top: 1px solid #f1f5f9; padding-top: 20px; text-align: center; font-size: 11px; color: #94a3b8;">
-                            Oferecido por ${empresaNome} &bull; Powered by NuvyCore Wi-Fi.
+                            Oferecido por ${empresaNome} &bull; Powered by Nuvy Pro Wi-Fi.
                         </div>
                     </div>
                 </div>
@@ -379,7 +543,7 @@ async function enviarEmailBoasVindasWifi({ email, leadNome, empresaNome, portalC
         };
 
         await transporter.sendMail(mailOptions);
-        console.log(`[Email Service 📧] E-mail de boas-vindas Wi-Fi enviado para ${email}`);
+        console.log(`[Email Service 📧] E-mail de boas-vindas Wi-Fi enviado para ${email} (Empresa: ${empresaNome} [${empresaId || 'Default'}])`);
         return true;
     } catch (err) {
         console.error(`[Email Service ❌] Erro ao enviar e-mail Wi-Fi:`, err.message);
@@ -390,10 +554,13 @@ async function enviarEmailBoasVindasWifi({ email, leadNome, empresaNome, portalC
 /**
  * Disparo em massa de E-mail Marketing do CRM
  */
-async function enviarEmailMarketingBatch({ destinatarios, assunto, conteudoHtml, empresaNome }) {
+async function enviarEmailMarketingBatch({ destinatarios, assunto, conteudoHtml, empresaNome, empresaId = null }) {
     try {
-        const { transporter, config } = await criarTransporter();
+        const { transporter, config } = await criarTransporter(empresaId);
         let enviados = 0;
+
+        const senderDisplayName = config.remetente_nome || empresaNome || 'Nuvy Pro';
+        const fromHeader = `"${senderDisplayName}" <${config.remetente_email || config.smtp_user}>`;
 
         for (const dest of destinatarios) {
             try {
@@ -405,7 +572,7 @@ async function enviarEmailMarketingBatch({ destinatarios, assunto, conteudoHtml,
                     <div style="font-family: Arial, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
                         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; padding: 32px; border: 1px solid #e2e8f0;">
                             <div style="padding-bottom: 16px; border-bottom: 1px solid #e2e8f0; margin-bottom: 20px;">
-                                <h3 style="margin:0; color:#0f172a;">${empresaNome || 'NuvyCore Hotspot'}</h3>
+                                <h3 style="margin:0; color:#0f172a;">${empresaNome || 'Nuvy Pro Hotspot'}</h3>
                             </div>
                             <div style="font-size: 14px; color: #334155; line-height: 1.6;">
                                 ${conteudoHtml.replace(/\{nome\}/g, targetNome)}
@@ -418,13 +585,14 @@ async function enviarEmailMarketingBatch({ destinatarios, assunto, conteudoHtml,
                 `;
 
                 await transporter.sendMail({
-                    from: `"${empresaNome || 'NuvyCore'}" <${config.smtp_user}>`,
+                    from: fromHeader,
                     to: targetEmail,
                     subject: assunto,
+                    replyTo: config.email_resposta || undefined,
                     html: htmlFinal
                 });
                 enviados++;
-                console.log(`[Email Marketing 📧] E-mail enviado com sucesso para ${targetEmail}`);
+                console.log(`[Email Marketing 📧] E-mail enviado com sucesso para ${targetEmail} (Tenant: ${empresaId || 1})`);
             } catch (errSingle) {
                 console.warn(`[Email Marketing ⚠️] Falha ao enviar para ${JSON.stringify(dest)}:`, errSingle.message);
             }
@@ -469,7 +637,8 @@ async function checarEDispararEmailWifi(email, leadNome, empresaId, portalId = n
                 email,
                 leadNome: leadNome || 'Cliente',
                 empresaNome: empresa.nome,
-                portalConfig: portal
+                portalConfig: portal,
+                empresaId: empresaId
             });
         }
     } catch (err) {
@@ -479,6 +648,9 @@ async function checarEDispararEmailWifi(email, leadNome, empresaId, portalId = n
 
 module.exports = {
     obterConfigEmailBackup,
+    obterConfigEmail,
+    criarTransporter,
+    testarConexaoSmtp,
     enviarBackupPorEmail,
     salvarConfigEmailBackup,
     enviarEmailResetSenha,

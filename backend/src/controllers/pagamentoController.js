@@ -603,7 +603,7 @@ exports.gerarPagamentoCartao = async (req, res) => {
           "SELECT m.end_hotspot, m.ip FROM mikrotiks m WHERE m.id = ? LIMIT 1",
           [plano.mikrotik_id]
         );
-        gateway = mkResult[0]?.end_hotspot || mkResult[0]?.ip || null;
+        gateway = mkResult[0]?.end_hotspot || (ip && typeof ip === 'string' && ip.includes('.') ? ip.replace(/\.\d+$/, '.1') : '10.5.50.1');
         username = clienteCpf || mac;
       } catch (e) {
         console.warn("Falha ao buscar gateway apos cartao approved:", e.message);
@@ -1012,7 +1012,7 @@ exports.verificarStatusPagamento = async (req, res) => {
     const [mikrotikResult] = await db.query(mkQuery, mkParams);
 
     const mikrotik = mikrotikResult[0];
-    const gateway = mikrotik?.end_hotspot || mikrotik?.ip || null;
+    const gateway = mikrotik?.end_hotspot || (ip && typeof ip === 'string' && ip.includes('.') ? ip.replace(/\.\d+$/, '.1') : '10.5.50.1');
 
     if (status === "approved") {
       // Idempotencia atomica: tenta marcar 'liberado_em' se ainda nao foi liberado.

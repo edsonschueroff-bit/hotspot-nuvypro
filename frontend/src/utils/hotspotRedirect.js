@@ -4,18 +4,28 @@ export function limparCpf(cpf) {
 }
 
 export function formatarGatewayUrl(gatewayUrl) {
-  if (!gatewayUrl) return '';
+  if (!gatewayUrl) return 'http://10.5.50.1/login';
   let url = String(gatewayUrl).trim();
-  if (!url) return '';
+  if (!url) return 'http://10.5.50.1/login';
 
   // Se não começa com http:// ou https://, força http://
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = 'http://' + url;
   }
 
-  // Se não possui caminho /login ou /login.html, adiciona /login
+  // Se o IP informado for de cliente (ex: 10.5.50.253), converte para o gateway do roteador 10.5.50.1
   try {
     const parsed = new URL(url);
+    const host = parsed.hostname;
+    if (host && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+      const parts = host.split('.');
+      const lastOctet = parseInt(parts[3], 10);
+      if (lastOctet > 10) {
+        parsed.hostname = `${parts[0]}.${parts[1]}.${parts[2]}.1`;
+        url = parsed.toString();
+      }
+    }
+    
     if (!parsed.pathname || parsed.pathname === '/' || parsed.pathname === '') {
       parsed.pathname = '/login';
       url = parsed.toString();
@@ -31,7 +41,9 @@ export function formatarGatewayUrl(gatewayUrl) {
 
 export function redirecionarHotspot(gatewayUrl, username, password, dstUrl) {
   if (!gatewayUrl) {
-    if (dstUrl) window.location.href = dstUrl;
+    if (dstUrl && typeof dstUrl === 'string' && (dstUrl.startsWith('http://') || dstUrl.startsWith('https://'))) {
+      window.location.href = dstUrl;
+    }
     return;
   }
 
@@ -53,7 +65,8 @@ export function redirecionarHotspot(gatewayUrl, username, password, dstUrl) {
   inputPass.value = password || '';
   form.appendChild(inputPass);
 
-  if (dstUrl) {
+  // Apenas inclui dst se for uma URL válida (não um timeout em milissegundos)
+  if (dstUrl && typeof dstUrl === 'string' && (dstUrl.startsWith('http://') || dstUrl.startsWith('https://') || dstUrl.startsWith('/'))) {
     const inputDst = document.createElement('input');
     inputDst.type = 'hidden';
     inputDst.name = 'dst';

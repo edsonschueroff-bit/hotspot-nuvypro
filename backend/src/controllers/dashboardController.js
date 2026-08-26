@@ -1,36 +1,35 @@
 const db = require("../../db");
+const { sqlSessoesAtivas } = require("../services/sessionJanitorService");
+const { sqlStatusPagos } = require("../utils/paymentStatus");
 
 exports.getDashboard = async (req, res) => {
   try {
     const empresaId = req.empresa_id;
 
-    // 1. Conectados Agora (Radacct com acctstoptime NULL)
+    // 1. Conectados Agora (Critério centralizado e verificado de atividade real)
     const [[{ conectados_agora }]] = await db.query(
       `SELECT COUNT(DISTINCT ra.username) as conectados_agora
        FROM radacct ra
-       JOIN radius_users ru ON ru.username = ra.username
-       WHERE ru.empresa_id = ? AND ra.acctstoptime IS NULL`,
+       JOIN radius_users ru ON ru.username COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci
+       WHERE ru.empresa_id = ? AND ${sqlSessoesAtivas('ra')}`,
       [empresaId]
     );
 
-    // Fallback: se radacct não tiver registros ativos no momento, pega soma das sessões ativas no mikrotiks
     let totalConectados = conectados_agora || 0;
-    if (totalConectados === 0) {
-      const [[{ mk_ativos }]] = await db.query(
-        `SELECT COALESCE(SUM(usuarios_ativos), 0) as mk_ativos FROM mikrotiks WHERE empresa_id = ?`,
-        [empresaId]
-      );
-      totalConectados = mk_ativos || 0;
-    }
 
-    // 2. Leads (Hoje, Mês, Total)
+    // 2. Leads (Hoje, Mês, Total - Timezone América/São Paulo UTC-3)
     const [[{ leads_hoje }]] = await db.query(
-      "SELECT COUNT(*) as leads_hoje FROM leads WHERE empresa_id = ? AND DATE(criado_em) = CURDATE()",
+      `SELECT COUNT(*) as leads_hoje FROM leads 
+       WHERE empresa_id = ? 
+         AND DATE(CONVERT_TZ(criado_em, '+00:00', '-03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '-03:00'))`,
       [empresaId]
     );
 
     const [[{ leads_mes }]] = await db.query(
-      "SELECT COUNT(*) as leads_mes FROM leads WHERE empresa_id = ? AND MONTH(criado_em) = MONTH(CURDATE()) AND YEAR(criado_em) = YEAR(CURDATE())",
+      `SELECT COUNT(*) as leads_mes FROM leads 
+       WHERE empresa_id = ? 
+         AND MONTH(CONVERT_TZ(criado_em, '+00:00', '-03:00')) = MONTH(CONVERT_TZ(NOW(), '+00:00', '-03:00'))
+         AND YEAR(CONVERT_TZ(criado_em, '+00:00', '-03:00')) = YEAR(CONVERT_TZ(NOW(), '+00:00', '-03:00'))`,
       [empresaId]
     );
 
@@ -39,14 +38,19 @@ exports.getDashboard = async (req, res) => {
       [empresaId]
     );
 
-    // 3. Vendas de Acesso Wi-Fi / Faturamento PIX (Hoje e Mês)
+    // 3. Vendas de Acesso Wi-Fi / Faturamento PIX (Hoje e Mês - Status unificado e Timezone)
     const [[{ vendas_hoje }]] = await db.query(
-      "SELECT COALESCE(SUM(valor), 0) as vendas_hoje FROM pagamentos WHERE empresa_id = ? AND status = 'pago' AND DATE(criado_em) = CURDATE()",
+      `SELECT COALESCE(SUM(valor), 0) as vendas_hoje FROM pagamentos 
+       WHERE empresa_id = ? AND ${sqlStatusPagos()} 
+         AND DATE(CONVERT_TZ(criado_em, '+00:00', '-03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '-03:00'))`,
       [empresaId]
     );
 
     const [[{ vendas_mes }]] = await db.query(
-      "SELECT COALESCE(SUM(valor), 0) as vendas_mes FROM pagamentos WHERE empresa_id = ? AND status = 'pago' AND MONTH(criado_em) = MONTH(CURDATE()) AND YEAR(criado_em) = YEAR(CURDATE())",
+      `SELECT COALESCE(SUM(valor), 0) as vendas_mes FROM pagamentos 
+       WHERE empresa_id = ? AND ${sqlStatusPagos()} 
+         AND MONTH(CONVERT_TZ(criado_em, '+00:00', '-03:00')) = MONTH(CONVERT_TZ(NOW(), '+00:00', '-03:00'))
+         AND YEAR(CONVERT_TZ(criado_em, '+00:00', '-03:00')) = YEAR(CONVERT_TZ(NOW(), '+00:00', '-03:00'))`,
       [empresaId]
     );
 

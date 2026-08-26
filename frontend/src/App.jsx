@@ -148,7 +148,7 @@ function App() {
       <Route path="/super/atualizar" element={<RotaPrivada><AtualizarSistema /></RotaPrivada>} />
       <Route path="/super/backups" element={<RotaPrivada><Backups /></RotaPrivada>} />
       <Route path="/super/branding" element={<RotaPrivada><Branding /></RotaPrivada>} />
-      <Route path="/super/publicar-atualizacao" element={<RotaPrivada><PublicarAtualizacao /></RotaPrivada>} />
+      <Route path="/super/publicar-atualizacao" element={<Navigate to="/super/atualizar" replace />} />
     </Routes>
   );
 }

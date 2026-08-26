@@ -7,8 +7,8 @@ export default function Sessoes() {
   const [sessoes, setSessoes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const carregarSessoes = async () => {
-    setLoading(true);
+  const carregarSessoes = async (silencioso = false) => {
+    if (!silencioso) setLoading(true);
     try {
       const res = await fetch("/api/radius/sessoes", {
         headers: {
@@ -20,14 +20,18 @@ export default function Sessoes() {
       setSessoes(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Erro ao carregar sessões:", err);
-      setSessoes([]);
+      if (!silencioso) setSessoes([]);
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
   };
 
   useEffect(() => {
-    carregarSessoes();
+    carregarSessoes(false);
+    const interval = setInterval(() => {
+      carregarSessoes(true);
+    }, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   return (

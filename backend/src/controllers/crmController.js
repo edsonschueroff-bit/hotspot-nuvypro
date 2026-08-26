@@ -736,7 +736,8 @@ exports.dispararEmailMassa = async (req, res) => {
             destinatarios,
             assunto,
             conteudoHtml,
-            empresaNome: empresa?.nome || 'NuvyCore Hotspot'
+            empresaNome: empresa?.nome || 'Nuvy Pro Hotspot',
+            empresaId: req.empresa_id
         });
 
         if (resultado.error) {

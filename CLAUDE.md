@@ -2577,10 +2577,76 @@ Todos os itens priorizados foram implementados e validados:
     - Autenticação via Deploy Key SSH e blindagem de segurança no `.gitignore` (credenciais `.env`, certificados e logs isolados).
     - Código 100% sincronizado e pronto para recuperação rápida de desastres (Disaster Recovery).
 
+15. **Módulo de Liberação de Confiança / Promessa de Pagamento (CONCLUÍDO 25/08/2026):**
+    - **Objetivo:** Permitir que clientes com faturas em atraso ou suspensas obtenham prazo extra temporário (+3 a +15 dias) para manter o Wi-Fi e painel funcionando enquanto providenciam o pagamento.
+    - **Banco de Dados (MySQL):**
+      - `empresas.status_financeiro` atualizado com novo enum `'liberado_confianca'`.
+      - Adicionadas colunas `liberacao_confianca_ate` (DATETIME), `liberacao_confianca_qtd` (INT) e `liberacao_confianca_motivo` (VARCHAR).
+      - Adicionadas colunas `liberacao_confianca_em` (DATETIME) e `liberacao_confianca_dias` (INT) em `saas_faturas`.
+    - **Backend & Middleware:**
+      - `tenant.js`: Permite tráfego normal caso `status_financeiro === 'liberado_confianca'` e `liberacao_confianca_ate >= NOW()`. Caso o prazo expire, rebaixa automaticamente para `'suspenso'`.
+      - `saasBillingJob.js`: Suspensão automática respeita a data limite de liberação de confiança.
+      - `saasFaturaController.js` & `saasFaturaRoutes.js`: Endpoints `POST /api/saas-faturas/liberacao-confianca-admin` e `POST /api/saas-faturas/solicitar-liberacao-confianca`.
+      - Trava de segurança anti-abuso: Limite de 1 liberação por fatura/ciclo no auto-atendimento.
+      - Disparo automático de notificação no WhatsApp do Super Admin ao acionar a liberação.
+    - **Frontend & Interfaces:**
+      - `AdminLayout.jsx`: Botão `🔓 Solicitar Liberação de Confiança (+3 Dias)` no modal de bloqueio e banner informativo quando ativo.
+      - `MinhasFaturas.jsx`: Badge visual e card de oportunidade para ativação rápida.
+      - `SaasFaturas.jsx`: Modal completo no Super Admin com seleção de dias (+3, +5, +7, +15 ou custom) e botão rápido `🔓 Liberar` na tabela.
+      - `Empresas.jsx`: Opção de status `'liberado_confianca'` disponível no cadastro e gestão de empresas.
+
+16. **Módulo Multi-Tenant SMTP / E-mail Avançado (CONCLUÍDO 26/08/2026):**
+    - **Objetivo:** Permitir que cada estabelecimento/tenant configure seu próprio servidor SMTP (Hostinger, Gmail/Google Workspace, Outlook, SendGrid, Amazon SES, etc.) com remetente personalizado (`From Name`, `From Email`, `Reply-To`), teste de diagnóstico em tempo real e fallback automático para o SMTP padrão global da plataforma.
+    - **Backend Service (`emailService.js`):**
+      - `obterConfigEmail(empresaId)`: Consulta `empresa_configs` com `config_type = 'smtp'`. Se não configurado ou inativo, faz fallback para o SMTP global do Super Admin / `.env`.
+      - `criarTransporter(empresaId, configOverride)`: Constrói transportador Nodemailer com SSL (porta 465) ou STARTTLS (porta 587).
+      - `testarConexaoSmtp`: Executa `transporter.verify()` para testar credenciais e dispara e-mail de teste formatado sob demanda.
+      - Injeção de `empresaId` em `enviarEmailBoasVindasWifi`, `enviarEmailMarketingBatch` e `checarEDispararEmailWifi`.
+    - **Backend Endpoints (`empresaConfigController.js` & `empresaConfigRoutes.js`):**
+      - Adicionado tipo `'smtp'` a `VALID_TYPES`.
+      - Rota `POST /api/empresa-config/smtp/testar` com `publicApiLimiter`.
+    - **Frontend & Interfaces:**
+      - Componente [`ConfiguracaoSmtp.jsx`](file:///var/www/hotspot/frontend/src/components/admin/ConfiguracaoSmtp.jsx): Presets rápidos de 1-clique (Hostinger, Gmail, Outlook, SendGrid, Amazon SES), formulário com toggle de visibilidade de senha 👁️, personalização de remetente e card de teste de disparo em tempo real.
+      - Aba `📧 Servidor SMTP / E-mail` adicionada em [`Configuracoes.jsx`](file:///var/www/hotspot/frontend/src/pages/admin/Configuracoes.jsx).
+    - **Status do Build:** `npm run build` compilado com 0 erros (13.3s), backend hot-reloaded no PM2 e Nginx ativo.
+
+17. **Correção de Redirecionamento & Handshake Captive Portal MikroTik (CONCLUÍDO 26/08/2026):**
+    - **Diagnóstico do Erro iOS:** Ao clicar em *"Conectar à Internet"* no portal captive, o iOS CNA exibia *"A página não pode ser aberta ao iniciar a sessão no ponto de acesso porque ele não pôde se conectar ao servidor"*.
+    - **Causa Raiz:** Quando o roteador MikroTik estava com o campo `end_hotspot` nulo no banco (`mikrotiks.end_hotspot IS NULL`), o backend fazia fallback utilizando o IP do próprio cliente (`ip = 10.5.50.253`), fazendo o celular enviar um POST de autenticação para seu próprio IP em vez do gateway `10.5.50.1`. Além disso, o parâmetro numérico de delay `1500` era repassado como `dstUrl`.
+    - **Correções Aplicadas:**
+      - **Backend (`leadController.js`, `lgpdController.js`, `socialAuthController.js`, `authTempController.js`):** Implementada resolução inteligente de gateway. Se `end_hotspot` estiver vazio, calcula automaticamente o gateway da sub-rede (`ip.replace(/\.\d+$/, '.1')` -> `10.5.50.1`), nunca retornando o IP do cliente.
+      - **Banco de Dados (MySQL):** Atualizado `end_hotspot = 'http://10.5.50.1/login'` para roteadores na base.
+      - **Frontend (`hotspotRedirect.js`, `CadastroLead.jsx`, `CadastroLGPD.jsx`):** Sanitizado `formatarGatewayUrl` para auto-corrigir IPs com host octet > 10 para `.1`, e sanitizado `dstUrl` para ignorar números e timeouts em ms.
+18. **Auditoria QA & Correções da Fase 2 (CONCLUÍDO 26/08/2026):**
+    - **Sessões Fantasmas & Janitor:** Criado [`sessionJanitorService.js`](file:///var/www/hotspot/backend/src/services/sessionJanitorService.js) e unificado o critério de sessão ativa em `dashboardController.js` e `radiusController.js` com auto-encerramento idempotente de sessões órfãs. Adicionado `Acct-Interim-Interval := 120` no `radreply`.
+    - **Marco Civil / Logs de Conexão:** Corrigido conflito de collation MySQL (`COLLATE utf8mb4_unicode_ci`), filtros de 24 horas no `complianceController.js` e auto-load no `Compliance.jsx`.
+    - **Padronização de Status de Pagamento:** Criado [`paymentStatus.js`](file:///var/www/hotspot/backend/src/utils/paymentStatus.js) unificando `status IN ('pago', 'approved', 'aprovado', 'CONFIRMED')` em todos os controllers (Dashboard, Filiais, Financeiro, CRM).
+    - **Timezone Operacional:** Normalizado para o Horário de Brasília (`-03:00`) com `CONVERT_TZ` evitando virada prematura de dia às 21h em relatórios.
+    - **Auto-Refresh & Rotas:** Adicionado polling silencioso de 15s em `Sessoes.jsx` e redirecionamento de stub em `App.jsx`.
+    - **Suite de Regressão Automatizada:** 8/8 testes aprovados com 100% de sucesso (Cenários A, B, C, D, E, F, Marco Civil, Pagamentos e Multi-Tenant).
+
+---
+
+### 📊 Matriz Atualizada de Integrações do Sistema (Status Oficial):
+1. **n8n:** ✅ Operacional (`n8n/workflow-saas-pix.json` e `workflow-ia-atendimento.json` com variáveis dinâmicas).
+2. **WhatsApp / CRM:** ✅ Operacional (`whatsappNotify.js`, webhook `/api/crm/webhook` aberto).
+3. **Mercado Pago (PIX + Cartão):** ✅ Operacional (payloads B2C e B2B protegidos).
+4. **EFI PIX:** ❓ Não configurado (diretório `certificados/` aguardando certificados `.pem` de terceiros quando contratado).
+5. **FreeRADIUS 3.0:** ✅ Operacional (sintaxe OK via `freeradius -XC`, accounting e dailycounter sincronizados).
+6. **WireGuard / VPN:** ✅ Operacional (portas 51820/UDP e 51821 ativas, mapeamento Winbox 20000+X).
+7. **Login Social (Google / Meta):** ✅ Operacional (`socialAuthController.js` com validação de token).
+8. **SMTP / E-mail Multi-Tenant:** ✅ Operacional (servidor próprio por tenant + fallback global Hostinger).
+9. **Multi-Vendor Drivers:** ✅ Operacional (`MikrotikDriver.js`, `OmadaDriver.js`, `UnifiDriver.js`).
+10. **Webhooks Outbound Hub:** ✅ Operacional (HMAC-SHA256, eventos de leads, pagamentos e cupons).
+11. **Open Graph & Social Share Preview:** ✅ Operacional (banner Nuvy Pro em 1200x630 e tags completas).
+12. **Identidade Visual & Branding:** ✅ Operacional (**Nuvy Pro** — Design Precision Light).
+
 ---
 
 ### 🎯 PONTO DE RETOMADA FUTURA:
 - **Plano Mestre de QA & Testes de Bancada/Hardware:** [`QA_AUDIT_PLAN.md`](file:///var/www/hotspot/.agents/memory/QA_AUDIT_PLAN.md) pronto para início a partir de **`MTK-01`** (Autenticação RADIUS no roteador físico).
+
+
 
 
 

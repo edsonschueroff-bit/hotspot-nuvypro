@@ -14,6 +14,20 @@ async function syncConnectionLogs() {
   const conn = await db.getConnection();
 
   try {
+    // 0. Auto-encerrar sessões fantasmas/antigas no radacct que não receberam Acct-Stop do MikroTik
+    // Se a conexão iniciou há mais de 2 horas (tempo padrão de Session-Timeout) ou não teve update recente
+    await conn.execute(`
+      UPDATE radacct 
+      SET acctstoptime = COALESCE(acctupdatetime, DATE_ADD(acctstarttime, INTERVAL 2 HOUR)),
+          acctsessiontime = TIMESTAMPDIFF(SECOND, acctstarttime, COALESCE(acctupdatetime, DATE_ADD(acctstarttime, INTERVAL 2 HOUR))),
+          acctterminatecause = 'Session-Timeout'
+      WHERE acctstoptime IS NULL 
+        AND (
+          acctstarttime < DATE_SUB(NOW(), INTERVAL 2 HOUR)
+          OR (acctupdatetime IS NOT NULL AND acctupdatetime < DATE_SUB(NOW(), INTERVAL 15 MINUTE))
+        )
+    `);
+
     // 1. Get last synced radacctid
     const [syncRow] = await conn.execute(
       'SELECT last_synced_radacctid FROM connection_logs_sync ORDER BY id DESC LIMIT 1'
@@ -22,30 +36,32 @@ async function syncConnectionLogs() {
 
     console.log(`[syncConnectionLogs] Buscando sessoes com radacctid > ${lastId}...`);
 
-    // 2. Fetch completed sessions from radacct, joined with radius_users and leads
+    // 2. Fetch completed sessions from radacct, joined with mikrotiks, radius_users and leads
     const [rows] = await conn.execute(
       `SELECT
         ra.radacctid,
-        m.empresa_id,
+        COALESCE(m.empresa_id, ru.empresa_id, 1) AS empresa_id,
         ra.username,
-        ll.cpf,
+        COALESCE(ll.cpf, ld.cpf) AS cpf,
         ra.callingstationid AS mac,
         ra.framedipaddress AS ip_atribuido,
         ra.nasipaddress AS nas_ip,
         ra.acctstarttime AS inicio_conexao,
-        ra.acctstoptime AS fim_conexao,
+        COALESCE(ra.acctstoptime, ra.acctupdatetime, NOW()) AS fim_conexao,
         ra.acctinputoctets AS bytes_entrada,
         ra.acctoutputoctets AS bytes_saida,
-        ra.acctsessiontime AS duracao_segundos,
-        ra.acctterminatecause AS motivo_desconexao,
+        COALESCE(ra.acctsessiontime, TIMESTAMPDIFF(SECOND, ra.acctstarttime, COALESCE(ra.acctstoptime, NOW()))) AS duracao_segundos,
+        COALESCE(ra.acctterminatecause, 'Session-Timeout') AS motivo_desconexao,
         ra.acctauthentic AS auth_result
       FROM radacct ra
-      INNER JOIN mikrotiks m ON m.ip COLLATE utf8mb4_unicode_ci = ra.nasipaddress COLLATE utf8mb4_unicode_ci
+      LEFT JOIN mikrotiks m ON m.ip COLLATE utf8mb4_unicode_ci = ra.nasipaddress COLLATE utf8mb4_unicode_ci
+      LEFT JOIN radius_users ru ON ru.username COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci
       LEFT JOIN (
-         SELECT mac, empresa_id, MAX(cpf) as cpf
+         SELECT mac COLLATE utf8mb4_unicode_ci as mac, empresa_id, MAX(cpf) as cpf
          FROM leads
          GROUP BY mac, empresa_id
-      ) ll ON ll.mac COLLATE utf8mb4_unicode_ci = ra.callingstationid COLLATE utf8mb4_unicode_ci AND ll.empresa_id = m.empresa_id
+      ) ll ON ll.mac = ra.callingstationid COLLATE utf8mb4_unicode_ci AND ll.empresa_id = COALESCE(m.empresa_id, ru.empresa_id)
+      LEFT JOIN leads ld ON (ld.telefone COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci OR ld.cpf COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci)
       WHERE ra.radacctid > ? AND ra.acctstoptime IS NOT NULL
       ORDER BY ra.radacctid ASC
       LIMIT 5000`,

@@ -33,11 +33,8 @@ exports.login = async (req, res) => {
       [mikrotik_id]
     );
 
-    if (!mk || !mk.ip) {
-      return res.status(404).json({ message: "Gateway não encontrado" });
-    }
-
-    const gateway = mk.end_hotspot || mk.ip;
+    const clientIp = req.body.ip || req.query.ip;
+    const gateway = mk?.end_hotspot || (clientIp && typeof clientIp === 'string' && clientIp.includes('.') ? clientIp.replace(/\.\d+$/, '.1') : '10.5.50.1');
 
     res.json({ message: "Autenticado com sucesso", gateway, username });
 

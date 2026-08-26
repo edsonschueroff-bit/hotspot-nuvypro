@@ -1075,4 +1075,135 @@ exports.consultaPixBot = async (req, res) => {
     }
 };
 
+// ── LIBERAÇÃO DE CONFIANÇA MANUAL (SUPER ADMIN) ──
+exports.liberarConfiancaAdmin = async (req, res) => {
+    try {
+        const { empresa_id, dias = 3, motivo = "Concedido pelo Super Admin" } = req.body;
+        if (!empresa_id) {
+            return res.status(400).json({ message: "ID da empresa é obrigatório" });
+        }
+
+        const diasInt = Math.max(parseInt(dias, 10) || 3, 1);
+        const [[empresa]] = await db.query("SELECT id, nome, status_financeiro FROM empresas WHERE id = ?", [empresa_id]);
+        if (!empresa) {
+            return res.status(404).json({ message: "Empresa não encontrada" });
+        }
+
+        await db.execute(`
+            UPDATE empresas 
+            SET status_financeiro = 'liberado_confianca',
+                liberacao_confianca_ate = DATE_ADD(NOW(), INTERVAL ? DAY),
+                liberacao_confianca_qtd = liberacao_confianca_qtd + 1,
+                liberacao_confianca_motivo = ?
+            WHERE id = ?
+        `, [diasInt, String(motivo).trim(), empresa_id]);
+
+        // Registrar também na fatura pendente/vencida mais recente
+        await db.execute(`
+            UPDATE saas_faturas 
+            SET liberacao_confianca_em = NOW(),
+                liberacao_confianca_dias = ?
+            WHERE empresa_id = ? AND status IN ('pendente', 'vencido')
+            ORDER BY id DESC LIMIT 1
+        `, [diasInt, empresa_id]);
+
+        const [[empAtualizada]] = await db.query(
+            "SELECT id, nome, status_financeiro, liberacao_confianca_ate, liberacao_confianca_qtd FROM empresas WHERE id = ?",
+            [empresa_id]
+        );
+
+        res.json({
+            success: true,
+            message: `Liberação de confiança concedida com sucesso por ${diasInt} dias para ${empresa.nome}!`,
+            empresa: empAtualizada
+        });
+    } catch (err) {
+        console.error("Erro ao liberar confiança:", err);
+        res.status(500).json({ message: "Erro ao conceder liberação de confiança" });
+    }
+};
+
+// ── SOLICITAR LIBERAÇÃO DE CONFIANÇA (TENANT AUTO-ATENDIMENTO) ──
+exports.solicitarLiberacaoConfiancaTenant = async (req, res) => {
+    try {
+        const empresaId = req.empresa_id || req.user?.empresa_id;
+        if (!empresaId) {
+            return res.status(403).json({ message: "Empresa não identificada" });
+        }
+
+        const [[empresa]] = await db.query(
+            "SELECT id, nome, status_financeiro, liberacao_confianca_ate, liberacao_confianca_qtd FROM empresas WHERE id = ?",
+            [empresaId]
+        );
+
+        if (!empresa) {
+            return res.status(404).json({ message: "Empresa não encontrada" });
+        }
+
+        // Buscar fatura vencida ou pendente
+        const [[fatura]] = await db.query(`
+            SELECT * FROM saas_faturas 
+            WHERE empresa_id = ? AND status IN ('pendente', 'vencido')
+            ORDER BY id DESC LIMIT 1
+        `, [empresaId]);
+
+        if (!fatura) {
+            return res.status(400).json({ message: "Não há fatura pendente para liberação de confiança." });
+        }
+
+        // TRAVA ANTI-ABUSO: Verifica se já foi utilizada nesta fatura
+        if (fatura.liberacao_confianca_em) {
+            const dataUso = new Date(fatura.liberacao_confianca_em).toLocaleDateString('pt-BR');
+            return res.status(400).json({
+                message: `A Liberação de Confiança já foi utilizada para esta fatura em ${dataUso}. Efetue o pagamento via PIX para manter o acesso.`,
+                ja_utilizado: true
+            });
+        }
+
+        const dias = 3; // Prazo padrão de 3 dias (72h)
+        await db.execute(`
+            UPDATE empresas 
+            SET status_financeiro = 'liberado_confianca',
+                liberacao_confianca_ate = DATE_ADD(NOW(), INTERVAL ? DAY),
+                liberacao_confianca_qtd = liberacao_confianca_qtd + 1,
+                liberacao_confianca_motivo = 'Solicitado pelo próprio cliente (Auto-Atendimento)'
+            WHERE id = ?
+        `, [dias, empresaId]);
+
+        await db.execute(`
+            UPDATE saas_faturas 
+            SET liberacao_confianca_em = NOW(),
+                liberacao_confianca_dias = ?
+            WHERE id = ?
+        `, [dias, fatura.id]);
+
+        const [[empAtualizada]] = await db.query(
+            "SELECT status_financeiro, liberacao_confianca_ate FROM empresas WHERE id = ?",
+            [empresaId]
+        );
+
+        const dataLimiteFmt = new Date(empAtualizada.liberacao_confianca_ate).toLocaleDateString('pt-BR');
+
+        // Notificar o Super Admin no WhatsApp via whatsappController
+        try {
+            const { enviarMensagemDireta } = require("./whatsappController");
+            const [[masterRow]] = await db.query("SELECT telefone FROM admins WHERE role = 'super_admin' AND telefone IS NOT NULL LIMIT 1");
+            if (masterRow && masterRow.telefone) {
+                const msgNotif = `🔓 *LIBERAÇÃO DE CONFIANÇA UTILIZADA!*\n\nA empresa *${empresa.nome}* utilizou a Promessa de Pagamento de *3 dias*.\n\n📅 *Novo Prazo:* Até ${dataLimiteFmt}\n📋 *Fatura:* #${fatura.id} (R$ ${parseFloat(fatura.valor).toFixed(2).replace('.', ',')})\n\nO acesso ao Wi-Fi e painel foi reativado temporariamente.`;
+                enviarMensagemDireta(masterRow.telefone, msgNotif, 1).catch(() => {});
+            }
+        } catch (e) { }
+
+        res.json({
+            success: true,
+            message: `Liberação de confiança ativada com sucesso! Seu sistema foi liberado até ${dataLimiteFmt}.`,
+            liberacao_confianca_ate: empAtualizada.liberacao_confianca_ate,
+            dias
+        });
+    } catch (err) {
+        console.error("Erro ao solicitar liberação de confiança:", err);
+        res.status(500).json({ message: "Erro ao solicitar liberação de confiança" });
+    }
+};
+
 

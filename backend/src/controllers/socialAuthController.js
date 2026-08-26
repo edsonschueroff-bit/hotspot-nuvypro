@@ -223,12 +223,12 @@ exports.loginGoogle = async (req, res) => {
 
     await provisionarRadius(username, senha, plano, empresaId);
 
-    // Identifica gateway do MikroTik
+    // Identifica gateway do MikroTik (nunca usar IP do VPN 10.8.0.x ou IP do próprio cliente)
     const [[mkData]] = await db.query(
       "SELECT ip, end_hotspot FROM mikrotiks WHERE id = ? OR empresa_id = ? LIMIT 1",
       [mikrotik_id || 0, empresaId]
     );
-    const gateway = mkData?.end_hotspot || mkData?.ip || "192.168.88.1";
+    const gateway = mkData?.end_hotspot || (ip && typeof ip === 'string' && ip.includes('.') ? ip.replace(/\.\d+$/, '.1') : '10.5.50.1');
 
     const emailService = require('../services/emailService');
     emailService.checarEDispararEmailWifi(email, nome, empresaId, portal_id).catch(err => console.warn('[loginGoogle Wi-Fi Email ⚠️]', err.message));

@@ -2,10 +2,13 @@
 
 ### Data da Última Atualização: 22/08/2026 (Rebranding Oficial Nuvy Pro & Open Graph & Higienização UI)
 
-### 📌 DIRETRIZ OBRIGATÓRIA DO USUÁRIO (REGRA PERMANENTE)
-> **Sempre consultar e atualizar o `CLAUDE.md`:**
-> 1. **Ao iniciar qualquer tarefa:** Consultar o arquivo `CLAUDE.md` para verificar o contexto, arquitetura, padrões e onde paramos.
-> 2. **Ao concluir qualquer tarefa:** Registrar e salvar imediatamente no `CLAUDE.md` tudo o que foi implementado, corrigido, decisões tomadas e regras de arquitetura.
+### 📌 DIRETRIZES OBRIGATÓRIAS DO USUÁRIO (REGRAS PERMANENTES)
+> 1. **Sempre consultar e atualizar o `CLAUDE.md`:**
+>    - Ao iniciar: Consultar o arquivo `CLAUDE.md` para verificar o contexto, arquitetura e onde paramos.
+>    - Ao concluir: Registrar e salvar no `CLAUDE.md` tudo o que foi implementado, decisões tomadas e regras de arquitetura.
+> 2. **Controle Estrito de Git & GitHub (MUITO IMPORTANTE):**
+>    - **NUNCA** fazer `git commit` ou `git push` para o GitHub automaticamente sem o usuário pedir.
+>    - O GitHub funciona como o ponto de restauração seguro (ponto estável). Só enviar para o GitHub quando o usuário der a ordem explícita (ex: *"pode commitar"*, *"envie para o github"*).
 
 ### 🛠️ Status do Projeto & Funcionalidades Concluídas
 
@@ -283,6 +286,24 @@ Todos os 11 itens priorizados pelo cliente foram finalizados com sucesso:
       - Grid visual dos 4 planos (*Start R$ 97*, *Pro R$ 197*, *Enterprise R$ 397*, *Revenue Share*) consumidos da API `/api/public/saas-planos`.
       - Botão 1-Clique com auto-abertura do modal de QR Code PIX e Copia-e-Cola para pagamento imediato e desbloqueio instantâneo do sistema.
 
+12. **Módulo Multi-Tenant SMTP / E-mail Avançado (CONCLUÍDO 26/08/2026):**
+    - **Serviço Backend (`emailService.js`):** Arquitetura multi-tenant com `obterConfigEmail(empresaId)`, `criarTransporter(empresaId)`, `testarConexaoSmtp` e suporte completo a presets (Hostinger, Gmail, Outlook, SendGrid, Amazon SES) com fallback inteligente para o SMTP global.
+    - **Endpoints:** `POST /api/empresa-config/smtp/testar` e CRUD multi-tenant em `empresa_configs` (`config_type = 'smtp'`).
+    - **Frontend:** Componente [`ConfiguracaoSmtp.jsx`](file:///var/www/hotspot/frontend/src/components/admin/ConfiguracaoSmtp.jsx) integrado na aba *📧 Servidor SMTP / E-mail* de [`Configuracoes.jsx`](file:///var/www/hotspot/frontend/src/pages/admin/Configuracoes.jsx).
+
+---
+
+### 📊 Matriz Atualizada de Integrações do Sistema (Status Oficial):
+1. **n8n:** ✅ Operacional (`n8n/workflow-saas-pix.json` e `workflow-ia-atendimento.json` com variáveis dinâmicas).
+2. **WhatsApp / CRM:** ✅ Operacional (`whatsappNotify.js`, webhook `/api/crm/webhook` aberto).
+3. **Mercado Pago (PIX + Cartão):** ✅ Operacional (payloads B2C e B2B protegidos).
+16. **Auditoria QA & Correções da Fase 2 (CONCLUÍDO 26/08/2026):**
+    - **Sessões Fantasmas & Janitor:** Criado [`sessionJanitorService.js`](file:///var/www/hotspot/backend/src/services/sessionJanitorService.js) e unificado o critério de sessão ativa em `dashboardController.js` e `radiusController.js` com auto-encerramento idempotente de sessões órfãs. Adicionado `Acct-Interim-Interval := 120` no `radreply`.
+    - **Marco Civil / Logs de Conexão:** Corrigido conflito de collation MySQL (`COLLATE utf8mb4_unicode_ci`), filtros de 24 horas no `complianceController.js` e auto-load no `Compliance.jsx`.
+    - **Padronização de Status de Pagamento:** Criado [`paymentStatus.js`](file:///var/www/hotspot/backend/src/utils/paymentStatus.js) unificando `status IN ('pago', 'approved', 'aprovado', 'CONFIRMED')` em todos os controllers (Dashboard, Filiais, Financeiro, CRM).
+    - **Timezone Operacional:** Normalizado para o Horário de Brasília (`-03:00`) com `CONVERT_TZ` evitando virada prematura de dia às 21h em relatórios.
+    - **Regras Globais de Faturamento SaaS & Anti-Retroatividade:** Proteção contra geração de faturas no passado no `saasBillingJob.js`, garantia do ciclo de 30 dias após pagamento e regularização da empresa do Lucas.
+
 ---
 
 ### 📊 Matriz Atualizada de Integrações do Sistema (Status Oficial):
@@ -293,7 +314,7 @@ Todos os 11 itens priorizados pelo cliente foram finalizados com sucesso:
 5. **FreeRADIUS 3.0:** ✅ Operacional (sintaxe OK via `freeradius -XC`, accounting e dailycounter sincronizados).
 6. **WireGuard / VPN:** ✅ Operacional (portas 51820/UDP e 51821 ativas, mapeamento Winbox 20000+X).
 7. **Login Social (Google / Meta):** ✅ Operacional (`socialAuthController.js` com validação de token).
-8. **SMTP / E-mail:** ⚠️ Parcial (ativo para tenant ID 1 e remetente padrão da plataforma).
+8. **SMTP / E-mail Multi-Tenant:** ✅ Operacional (servidor próprio por tenant + fallback global Hostinger).
 9. **Multi-Vendor Drivers:** ✅ Operacional (`MikrotikDriver.js`, `OmadaDriver.js`, `UnifiDriver.js`).
 10. **Webhooks Outbound Hub:** ✅ Operacional (HMAC-SHA256, eventos de leads, pagamentos e cupons).
 11. **Open Graph & Social Share Preview:** ✅ Operacional (banner Nuvy Pro em 1200x630 e tags completas).
@@ -303,6 +324,7 @@ Todos os 11 itens priorizados pelo cliente foram finalizados com sucesso:
 
 ### 🎯 PONTO DE RETOMADA FUTURA:
 - **Plano Mestre de QA & Testes de Bancada/Hardware:** [`QA_AUDIT_PLAN.md`](file:///var/www/hotspot/.agents/memory/QA_AUDIT_PLAN.md) pronto para início a partir de **`MTK-01`** (Autenticação RADIUS no roteador físico).
+
 
 
 

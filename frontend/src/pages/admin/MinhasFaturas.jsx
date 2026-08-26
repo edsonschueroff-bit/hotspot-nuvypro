@@ -410,6 +410,13 @@ export default function MinhasFaturas() {
                 </span>
               )}
 
+              {statusFinanceiro === "liberado_confianca" && (
+                <span className="px-3 py-1 bg-amber-50 text-amber-800 border border-amber-300 text-xs font-semibold rounded-full flex items-center gap-1.5">
+                  <span className="text-sm">🔓</span>
+                  Liberação de Confiança Ativa
+                </span>
+              )}
+
               {isTrial && (
                 <span className="px-3 py-1 bg-amber-50 text-amber-800 border border-amber-300 text-xs font-semibold rounded-full flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 text-amber-600" />
@@ -473,6 +480,46 @@ export default function MinhasFaturas() {
           <div className="p-4 bg-red-50 border border-red-200 rounded-md text-red-700 text-xs font-medium flex items-center gap-2.5 animate-fade-in shadow-2xs">
             <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
             <span>{erroMsg}</span>
+          </div>
+        )}
+
+        {/* Alerta / Ação de Liberação de Confiança */}
+        {(isSuspenso || statusFinanceiro === "inadimplente") && (
+          <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-lg flex-shrink-0">
+                🔓
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-amber-950">Precisa de prazo extra para organizar o pagamento?</h3>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  Solicite a <strong>Liberação de Confiança (+3 Dias)</strong> para continuar utilizando todos os recursos e o Wi-Fi dos seus clientes.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={async () => {
+                if (!window.confirm("Deseja solicitar a Liberação de Confiança (+3 Dias) para prorrogar seu acesso temporariamente?")) return;
+                try {
+                  setErroMsg("");
+                  const token = localStorage.getItem("admin_token");
+                  const res = await fetch("/api/saas-faturas/solicitar-liberacao-confianca", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.message || "Erro ao solicitar");
+                  setSucessoMsg(data.message);
+                  carregarFaturas();
+                } catch (err) {
+                  setErroMsg(err.message);
+                }
+              }}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold whitespace-nowrap transition-colors shadow-xs cursor-pointer text-center"
+            >
+              🔓 Ativar +3 Dias de Confiança
+            </button>
           </div>
         )}
 

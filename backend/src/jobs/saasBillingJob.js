@@ -18,24 +18,34 @@ async function processarFaturamentoSaas() {
 
         for (const fat of vencidas) {
             await db.execute("UPDATE saas_faturas SET status = 'vencido' WHERE id = ?", [fat.id]);
-            if (fat.status_financeiro !== 'suspenso') {
+            if (fat.status_financeiro !== 'suspenso' && fat.status_financeiro !== 'liberado_confianca') {
                 await db.execute("UPDATE empresas SET status_financeiro = 'inadimplente' WHERE id = ?", [fat.empresa_id]);
                 console.log(`[SaaS Billing Job] Empresa ${fat.empresa_nome} (ID ${fat.empresa_id}) marcada como INADIMPLENTE.`);
             }
         }
 
-        // 2. Suspensão automática de empresas inadimplentes há mais de 7 dias
+        // 2. Suspensão automática de empresas inadimplentes há mais de 7 dias (respeitando liberação de confiança e pagamentos dos últimos 30 dias)
         const [paraSuspender] = await db.query(`
-          SELECT DISTINCT e.id, e.nome, e.email
+          SELECT DISTINCT e.id, e.nome, e.email, e.status_financeiro, e.liberacao_confianca_ate
           FROM empresas e
           JOIN saas_faturas f ON f.empresa_id = e.id
           WHERE f.status = 'vencido'
             AND f.data_vencimento <= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
             AND e.status_financeiro != 'suspenso'
             AND e.slug != 'default'
+            AND NOT EXISTS (
+              SELECT 1 FROM saas_faturas f2 
+              WHERE f2.empresa_id = e.id 
+                AND f2.status = 'pago' 
+                AND f2.pago_em >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            )
         `);
 
         for (const emp of paraSuspender) {
+            // Se está liberado por confiança e a data ainda é válida no futuro, não suspende!
+            if (emp.status_financeiro === 'liberado_confianca' && emp.liberacao_confianca_ate && new Date(emp.liberacao_confianca_ate) >= new Date()) {
+                continue;
+            }
             await db.execute("UPDATE empresas SET status_financeiro = 'suspenso' WHERE id = ?", [emp.id]);
             console.log(`[SaaS Billing Job] 🚨 EMPRESA SUSPENSA AUTOMATICAMENTE: ${emp.nome} (ID ${emp.id}) por inadimplência > 7 dias.`);
         }
@@ -52,10 +62,34 @@ async function processarFaturamentoSaas() {
             if (emp.slug === 'default') continue; // Ignorar empresa padrão se não for cobrada
 
             const dia = Math.min(Math.max(emp.dia_vencimento || 10, 1), 28);
-            const dataVenc = new Date(anoAtual, mesAtual, dia);
+            let dataVenc = new Date(anoAtual, mesAtual, dia);
+            
+            // SE o dia de corte do mês atual já passou, o vencimento gerado DEVE ser para o PRÓXIMO mês (nunca retroativo)!
+            const hojeData = new Date();
+            hojeData.setHours(0, 0, 0, 0);
+            if (dataVenc <= hojeData) {
+                dataVenc = new Date(anoAtual, mesAtual + 1, dia);
+            }
             const vencStr = dataVenc.toISOString().split('T')[0];
 
-            // Verificar se já existe fatura gerada para este mês/vencimento
+            // Proteção Global: Não gerar nova fatura se a empresa já pagou nos últimos 25 dias ou já possui fatura válida para o período
+            const [[faturaAtiva]] = await db.query(`
+              SELECT id FROM saas_faturas 
+              WHERE empresa_id = ? 
+                AND status IN ('pago', 'pendente')
+                AND (
+                  (pago_em IS NOT NULL AND pago_em >= DATE_SUB(CURDATE(), INTERVAL 25 DAY))
+                  OR data_vencimento >= CURDATE()
+                )
+              LIMIT 1
+            `, [emp.id]);
+
+            if (faturaAtiva) {
+                // Empresa já possui cobertura ativa ou fatura futura agendada
+                continue;
+            }
+
+            // Verificar se já existe fatura gerada com esta mesma data de vencimento
             const [[existente]] = await db.query(`
               SELECT id FROM saas_faturas 
               WHERE empresa_id = ? AND data_vencimento = ? AND status != 'cancelado'
@@ -68,7 +102,7 @@ async function processarFaturamentoSaas() {
                 const [[vendasRow]] = await db.query(`
                     SELECT IFNULL(SUM(valor), 0) AS total_vendas
                     FROM pagamentos
-                    WHERE empresa_id = ? AND status = 'approved'
+                    WHERE empresa_id = ? AND status IN ('approved', 'pago')
                       AND criado_em >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
                 `, [emp.id]);
 

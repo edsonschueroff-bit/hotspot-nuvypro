@@ -13,6 +13,8 @@ router.post("/gerar-mensalidade", saasFaturaController.gerarMensalidadeManual);
 router.post("/disparos-whatsapp", saasFaturaController.executarDisparosManuaisWhatsapp);
 router.get("/minhas-faturas", auth, tenant, saasFaturaController.getMinhasFaturas);
 router.post("/assinar-plano", auth, tenant, saasFaturaController.assinarPlano);
+router.post("/solicitar-liberacao-confianca", auth, tenant, saasFaturaController.solicitarLiberacaoConfiancaTenant);
+router.post("/liberacao-confianca-admin", auth, saasFaturaController.liberarConfiancaAdmin);
 router.get("/", saasFaturaController.getFaturas);
 router.post("/", saasFaturaController.criarFatura);
 router.post("/:id/gerar-pix", auth, saasFaturaController.gerarPixFatura);

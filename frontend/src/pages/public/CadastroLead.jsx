@@ -80,7 +80,9 @@ export default function CadastroLead() {
       setMensagem("Conectando à internet...");
 
       if (data.gateway && data.username) {
-        redirecionarHotspot(data.gateway, data.username, data.password, 1500);
+        setTimeout(() => {
+          redirecionarHotspot(data.gateway, data.username, data.password);
+        }, 1200);
       }
     } catch (err) {
       setErro(err.message);

@@ -295,7 +295,8 @@ exports.leadLogin = async (req, res) => {
       [empresaId, username, plano.id, plano.mikrotik_id]
     );
 
-    const gateway = plano.end_hotspot || ip;
+    // Resolver gateway do MikroTik (nunca usar o próprio IP do cliente)
+    const gateway = plano.end_hotspot || (ip && typeof ip === 'string' && ip.includes('.') ? ip.replace(/\.\d+$/, '.1') : '10.5.50.1');
     const loginUrl = gateway ? `http://${gateway}/login?username=${username}&password=${senha}` : "";
 
     // Resolver portal_id Lead da empresa para notificacao WhatsApp

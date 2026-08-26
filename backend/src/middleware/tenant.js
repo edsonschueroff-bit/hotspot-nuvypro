@@ -28,15 +28,26 @@ module.exports = async (req, res, next) => {
 
     if (user.role !== 'super_admin' && req.empresa_id && !isBillingRoute) {
       const [[emp]] = await db.query(
-        "SELECT status_financeiro, nome FROM empresas WHERE id = ?",
+        "SELECT status_financeiro, liberacao_confianca_ate, nome FROM empresas WHERE id = ?",
         [req.empresa_id]
       );
-      if (emp && emp.status_financeiro === 'suspenso') {
-        return res.status(403).json({
-          error: 'Empresa suspensa temporariamente devido a pendência financeira.',
-          status_financeiro: 'suspenso',
-          empresa_nome: emp.nome
-        });
+      if (emp) {
+        // Se a liberação de confiança expirou, volta automaticamente para suspenso
+        if (emp.status_financeiro === 'liberado_confianca' && emp.liberacao_confianca_ate) {
+          const ateData = new Date(emp.liberacao_confianca_ate);
+          if (ateData < new Date()) {
+            await db.execute("UPDATE empresas SET status_financeiro = 'suspenso' WHERE id = ?", [req.empresa_id]);
+            emp.status_financeiro = 'suspenso';
+          }
+        }
+
+        if (emp.status_financeiro === 'suspenso') {
+          return res.status(403).json({
+            error: 'Empresa suspensa temporariamente devido a pendência financeira.',
+            status_financeiro: 'suspenso',
+            empresa_nome: emp.nome
+          });
+        }
       }
     }
 

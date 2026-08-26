@@ -895,6 +895,32 @@ export default function AdminLayout({ children }) {
                   >
                     <span>⚡</span> Escolher Plano & Desbloquear Imediatamente
                   </Link>
+
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm("Deseja solicitar a Liberação de Confiança (+3 Dias) para restaurar o acesso imediatamente enquanto organiza o pagamento?")) return;
+                      try {
+                        const token = localStorage.getItem("admin_token");
+                        const res = await fetch("/api/saas-faturas/solicitar-liberacao-confianca", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                          alert(data.message || "Não foi possível ativar a liberação de confiança");
+                          return;
+                        }
+                        alert("✅ " + data.message);
+                        window.location.reload();
+                      } catch (err) {
+                        alert("Erro: " + err.message);
+                      }
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-[10px] text-[13px] font-700 transition-colors shadow-sm cursor-pointer"
+                  >
+                    <span>🔓</span> Solicitar Liberação de Confiança (+3 Dias)
+                  </button>
+
                   <a
                     href="https://wa.me/5511999999999?text=Ol%C3%A1%2C%20gostaria%20de%20ativar%20minha%20assinatura%20do%20Nuvy%20Pro"
                     target="_blank"
@@ -905,6 +931,25 @@ export default function AdminLayout({ children }) {
                   </a>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Banner Liberação de Confiança */}
+          {empresaStatusFinanceiro === 'liberado_confianca' && !isSuperAdmin && (
+            <div className="mb-5 bg-[#fffbeb] border border-[#fde68a] text-amber-900 rounded-[10px] px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">🔓</span>
+                <p className="text-[12px] text-amber-900">
+                  <strong className="font-700 text-amber-950">Acesso em Liberação de Confiança:</strong>{' '}
+                  Seu sistema e conexões Wi-Fi estão temporariamente liberados. Efetue o pagamento da mensalidade pendente para manter o serviço ativo.
+                </p>
+              </div>
+              <Link
+                to={`${basePath}/minhas-faturas`}
+                className="px-3 py-1.5 bg-[#d97706] hover:bg-[#b45309] text-white rounded-md text-[12px] font-600 whitespace-nowrap transition-colors text-center"
+              >
+                Pagar com PIX
+              </Link>
             </div>
           )}
 
@@ -937,12 +982,38 @@ export default function AdminLayout({ children }) {
                   Sua empresa possui faturas em atraso. Efetue o pagamento para evitar a suspensão automática.
                 </p>
               </div>
-              <Link
-                to={`${basePath}/minhas-faturas`}
-                className="px-3 py-1.5 bg-[#ef4444] hover:bg-[#dc2626] text-white rounded-md text-[12px] font-600 whitespace-nowrap transition-colors text-center"
-              >
-                Pagar com PIX
-              </Link>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    if (!window.confirm("Deseja ativar a Liberação de Confiança (+3 Dias) para prorrogar seu prazo enquanto providencia o pagamento?")) return;
+                    try {
+                      const token = localStorage.getItem("admin_token");
+                      const res = await fetch("/api/saas-faturas/solicitar-liberacao-confianca", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+                      });
+                      const data = await res.json();
+                      if (!res.ok) {
+                        alert(data.message || "Não foi possível ativar a liberação de confiança");
+                        return;
+                      }
+                      alert("✅ " + data.message);
+                      window.location.reload();
+                    } catch (err) {
+                      alert("Erro: " + err.message);
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-[12px] font-600 whitespace-nowrap transition-colors text-center cursor-pointer"
+                >
+                  🔓 +3 Dias de Confiança
+                </button>
+                <Link
+                  to={`${basePath}/minhas-faturas`}
+                  className="px-3 py-1.5 bg-[#ef4444] hover:bg-[#dc2626] text-white rounded-md text-[12px] font-600 whitespace-nowrap transition-colors text-center"
+                >
+                  Pagar com PIX
+                </Link>
+              </div>
             </div>
           )}
 

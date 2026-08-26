@@ -63,7 +63,7 @@ async function gerarAcessoTemporario(mac, ip, planoId, empresaId, opts = {}) {
       [mikrotikId]
     );
 
-    const gateway = mtk[0]?.end_hotspot || "192.168.0.1";
+    const gateway = mtk[0]?.end_hotspot || (ip && typeof ip === 'string' && ip.includes('.') ? ip.replace(/\.\d+$/, '.1') : '10.5.50.1');
 
     // Registrar em radius_users para visibilidade
     if (empresaId && mikrotikId) {

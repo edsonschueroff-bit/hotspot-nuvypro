@@ -5,6 +5,7 @@ import ConfiguracaoSocialAuth from "../../components/admin/ConfiguracaoSocialAut
 import ConfiguracaoEfi from "../../components/admin/ConfiguracaoEfi";
 import ConfiguracaoAlertasDono from "../../components/admin/ConfiguracaoAlertasDono";
 import ConfiguracaoEmpresa from "../../components/admin/ConfiguracaoEmpresa";
+import ConfiguracaoSmtp from "../../components/admin/ConfiguracaoSmtp";
 import { PageHeader, Card, CardHeader, CardBody, PrimaryButton, SecondaryButton, Modal } from "@/components/ui";
 
 const acoes = [
@@ -60,7 +61,7 @@ export default function Configuracoes() {
             </svg>
           }
           title="Configurações do Sistema"
-          subtitle="Gerencie integrações de pagamento, autenticação social e rotinas de manutenção"
+          subtitle="Gerencie integrações de pagamento, servidor de e-mail SMTP, autenticação social e rotinas de manutenção"
         />
 
         {/* Abas */}
@@ -75,13 +76,13 @@ export default function Configuracoes() {
             📄 Ficha Cadastral
           </button>
           <button
-            onClick={() => setAba("limpeza")}
-            className={`px-3.5 py-1.5 text-[12px] font-600 rounded-md transition-all cursor-pointer ${aba === "limpeza"
+            onClick={() => setAba("smtp")}
+            className={`px-3.5 py-1.5 text-[12px] font-600 rounded-md transition-all cursor-pointer ${aba === "smtp"
                 ? "bg-white text-slate-900 shadow-2xs border border-[#e2e8f0]"
                 : "text-slate-500 hover:text-slate-900"
               }`}
           >
-            🧹 Limpeza
+            📧 Servidor SMTP / E-mail
           </button>
           <button
             onClick={() => setAba("mercado")}
@@ -119,6 +120,15 @@ export default function Configuracoes() {
           >
             📲 Alertas do Proprietário
           </button>
+          <button
+            onClick={() => setAba("limpeza")}
+            className={`px-3.5 py-1.5 text-[12px] font-600 rounded-md transition-all cursor-pointer ${aba === "limpeza"
+                ? "bg-white text-slate-900 shadow-2xs border border-[#e2e8f0]"
+                : "text-slate-500 hover:text-slate-900"
+              }`}
+          >
+            🧹 Limpeza
+          </button>
         </div>
 
         {/* Conteúdo da Aba */}
@@ -145,6 +155,7 @@ export default function Configuracoes() {
         )}
 
         {aba === "empresa" && <ConfiguracaoEmpresa />}
+        {aba === "smtp" && <ConfiguracaoSmtp />}
         {aba === "mercado" && <ConfiguracaoMercadoPago />}
         {aba === "efi" && <ConfiguracaoEfi />}
         {aba === "social" && <ConfiguracaoSocialAuth />}

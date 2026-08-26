@@ -89,7 +89,9 @@ export default function CadastroLGPD() {
       setMensagem("Cadastro realizado! Conectando...");
 
       if (data.gateway && data.username) {
-        redirecionarHotspot(data.gateway, data.username, data.password, 1500);
+        setTimeout(() => {
+          redirecionarHotspot(data.gateway, data.username, data.password);
+        }, 1200);
       }
     } catch (err) {
       setMensagem(err.message);

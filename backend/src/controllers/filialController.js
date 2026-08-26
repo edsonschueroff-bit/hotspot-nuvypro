@@ -15,6 +15,8 @@ async function obterMatrizId(empresaId) {
     return empresa.matriz_id || empresa.id;
 }
 
+const { sqlStatusPagos } = require("../utils/paymentStatus");
+
 // ── LISTAR FILIAIS DA REDE ──
 exports.listarFiliais = async (req, res) => {
     try {
@@ -41,7 +43,7 @@ exports.listarFiliais = async (req, res) => {
                 (SELECT COUNT(*) FROM mikrotiks WHERE empresa_id = e.id) AS total_mikrotiks,
                 (SELECT COUNT(*) FROM portais WHERE empresa_id = e.id) AS total_portais,
                 (SELECT COUNT(*) FROM leads WHERE empresa_id = e.id) AS total_leads,
-                (SELECT COALESCE(SUM(valor), 0) FROM pagamentos WHERE empresa_id = e.id AND status = 'approved') AS total_vendas
+                (SELECT COALESCE(SUM(valor), 0) FROM pagamentos WHERE empresa_id = e.id AND ${sqlStatusPagos()}) AS total_vendas
              FROM empresas e
              WHERE (e.id = ? OR e.matriz_id = ?) AND e.ativo = 1
              ORDER BY (e.id = ?) DESC, e.nome ASC`,
@@ -77,7 +79,7 @@ exports.obterMetricasConsolidadas = async (req, res) => {
              LEFT JOIN mikrotiks m ON m.empresa_id = e.id
              LEFT JOIN portais p ON p.empresa_id = e.id
              LEFT JOIN leads l ON l.empresa_id = e.id
-             LEFT JOIN pagamentos pag ON pag.empresa_id = e.id AND pag.status = 'approved'
+             LEFT JOIN pagamentos pag ON pag.empresa_id = e.id AND ${sqlStatusPagos('pag')}
              WHERE (e.id = ? OR e.matriz_id = ?) AND e.ativo = 1`,
             [matrizId, matrizId]
         );
