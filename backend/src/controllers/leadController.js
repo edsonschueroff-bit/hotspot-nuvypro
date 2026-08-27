@@ -265,22 +265,33 @@ exports.leadLogin = async (req, res) => {
     await db.query(`DELETE FROM radacct WHERE username = ?`, [username]);
 
     const rateLimit = `${plano.velocidade_up}M/${plano.velocidade_down}M`;
-    const tempoSegundos = plano.duracao_minutos * 60;
+    const { formatRadiusExpirationDate } = require("../utils/radiusDateHelper");
 
-    // Max-All-Session (sqlcounter 'totalcounter', reset=never) + 1 sessao unica
+    const checkValues = [
+      [username, 'Cleartext-Password', ':=', senha],
+      [username, 'Simultaneous-Use', ':=', String(plano.shared_users || 1)],
+    ];
+
+    if (plano.tipo_validade === 'acumulado') {
+      checkValues.push([username, 'Max-All-Session', ':=', String(tempoSegundos)]);
+    } else {
+      const dataExpiracao = new Date(Date.now() + tempoSegundos * 1000);
+      const expirationStr = formatRadiusExpirationDate(dataExpiracao);
+      checkValues.push([username, 'Expiration', ':=', expirationStr]);
+    }
+
     await db.query(
       `INSERT INTO radcheck (username, attribute, op, value)
-       VALUES (?, 'Cleartext-Password', ':=', ?),
-              (?, 'Max-All-Session', ':=', ?),
-              (?, 'Simultaneous-Use', ':=', '1')`,
-      [username, senha, username, String(tempoSegundos), username]
+       VALUES (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?)`,
+      checkValues.flat()
     );
 
     await db.query(
       `INSERT INTO radreply (username, attribute, op, value)
        VALUES (?, 'Mikrotik-Rate-Limit', ':=', ?),
-              (?, 'Session-Timeout', ':=', ?)`,
-      [username, rateLimit, username, tempoSegundos]
+              (?, 'Session-Timeout', ':=', ?),
+              (?, 'Acct-Interim-Interval', ':=', '120')`,
+      [username, rateLimit, username, String(tempoSegundos), username]
     );
 
     await db.query(

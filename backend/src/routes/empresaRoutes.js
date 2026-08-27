@@ -42,11 +42,27 @@ const upload = multer({
 // Rota com auth (não precisa ser super_admin): buscar empresa por slug (sidebar)
 router.get("/by-slug/:slug", auth, async (req, res) => {
   try {
-    const [[empresa]] = await db.execute('SELECT id, nome, slug, logo_url, status_financeiro, trial_ate FROM empresas WHERE slug = ?', [req.params.slug]);
+    const [[empresa]] = await db.query(`
+      SELECT e.id, e.nome, e.slug, e.logo_url, e.status_financeiro, e.trial_ate, e.saas_plano_id,
+             p.nome AS plano_nome, p.modulos_liberados, p.mod_vpn, p.mod_hotspot,
+             p.permite_portal_vendas, p.permite_automacao_whatsapp, p.limite_mikrotiks, p.limite_portais,
+             p.limite_leads, p.limite_whatsapp, p.limite_filiais, p.limite_usuarios
+      FROM empresas e
+      LEFT JOIN saas_planos p ON p.id = e.saas_plano_id
+      WHERE e.slug = ?
+    `, [req.params.slug]);
     if (!empresa) return res.status(404).json({ message: "Empresa não encontrada" });
+
+    if (empresa.modulos_liberados && typeof empresa.modulos_liberados === 'string') {
+      try {
+        empresa.modulos_liberados = JSON.parse(empresa.modulos_liberados);
+      } catch (e) {}
+    }
+
     res.json(empresa);
   } catch (err) {
-    res.status(500).json({ message: "Erro" });
+    console.error("Erro ao buscar empresa por slug:", err);
+    res.status(500).json({ message: "Erro ao carregar dados da empresa" });
   }
 });
 

@@ -15,16 +15,16 @@ async function syncConnectionLogs() {
 
   try {
     // 0. Auto-encerrar sessões fantasmas/antigas no radacct que não receberam Acct-Stop do MikroTik
-    // Se a conexão iniciou há mais de 2 horas (tempo padrão de Session-Timeout) ou não teve update recente
+    // Se a conexão não teve update recente nos últimos 5 minutos
     await conn.execute(`
       UPDATE radacct 
-      SET acctstoptime = COALESCE(acctupdatetime, DATE_ADD(acctstarttime, INTERVAL 2 HOUR)),
-          acctsessiontime = TIMESTAMPDIFF(SECOND, acctstarttime, COALESCE(acctupdatetime, DATE_ADD(acctstarttime, INTERVAL 2 HOUR))),
-          acctterminatecause = 'Session-Timeout'
+      SET acctstoptime = COALESCE(acctupdatetime, DATE_ADD(acctstarttime, INTERVAL 5 MINUTE)),
+          acctsessiontime = TIMESTAMPDIFF(SECOND, acctstarttime, COALESCE(acctupdatetime, DATE_ADD(acctstarttime, INTERVAL 5 MINUTE))),
+          acctterminatecause = 'Idle-Timeout'
       WHERE acctstoptime IS NULL 
         AND (
-          acctstarttime < DATE_SUB(NOW(), INTERVAL 2 HOUR)
-          OR (acctupdatetime IS NOT NULL AND acctupdatetime < DATE_SUB(NOW(), INTERVAL 15 MINUTE))
+          (acctupdatetime IS NOT NULL AND acctupdatetime < DATE_SUB(NOW(), INTERVAL 5 MINUTE))
+          OR (acctupdatetime IS NULL AND acctstarttime < DATE_SUB(NOW(), INTERVAL 5 MINUTE))
         )
     `);
 

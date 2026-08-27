@@ -49,12 +49,25 @@ export default function LoginHotspot() {
     setForm({ ...form, [name]: value });
   };
 
+  const handleVoucherChange = (e) => {
+    let val = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+
+    // Se o usuário digitou sem hífen e passou de 4 caracteres (ex: WIFI8X92 -> WIFI-8X92)
+    if (!val.includes("-") && val.length > 4) {
+      val = val.slice(0, 4) + "-" + val.slice(4);
+    } else if (val.startsWith("WIFI") && !val.startsWith("WIFI-") && val.length > 4) {
+      val = "WIFI-" + val.slice(4).replace(/-/g, "");
+    }
+
+    setVoucherCodigo(val);
+  };
+
   const handleLoginVoucher = async (e) => {
     e.preventDefault();
     setMensagem(null);
     setErro(null);
 
-    const codigo = voucherCodigo.trim().toUpperCase();
+    let codigo = voucherCodigo.trim().toUpperCase();
     if (!codigo) {
       setErro("Por favor, digite o código do seu voucher.");
       return;
@@ -79,7 +92,7 @@ export default function LoginHotspot() {
       setMensagem("Voucher validado! Conectando à internet...");
 
       if (data.gateway && data.username) {
-        redirecionarHotspot(data.gateway, data.username, codigo, 1500);
+        redirecionarHotspot(data.gateway, data.username, data.username, 1500);
       }
     } catch (err) {
       setErro(err.message);
@@ -194,8 +207,9 @@ export default function LoginHotspot() {
                     required
                     autoFocus
                     value={voucherCodigo}
-                    onChange={(e) => setVoucherCodigo(e.target.value.toUpperCase())}
+                    onChange={handleVoucherChange}
                     placeholder="Ex: WIFI-8X92"
+                    maxLength={15}
                     className="w-full text-center text-lg tracking-[0.2em] font-mono font-black border-2 border-blue-100 focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 rounded-2xl py-3.5 bg-slate-50 text-slate-900 transition-all uppercase placeholder:normal-case placeholder:font-sans placeholder:tracking-normal placeholder:text-sm placeholder:text-slate-400"
                   />
                 </div>

@@ -70,21 +70,35 @@ async function provisionarRadius(username, senha, plano, empresaId) {
   const duracaoMinutos = plano.duracao_minutos || 60;
   const tempoSegundos = duracaoMinutos * 60;
 
+  const { formatRadiusExpirationDate } = require("../utils/radiusDateHelper");
+
+  const checkValues = [
+    [username, 'Cleartext-Password', ':=', senha],
+    [username, 'Simultaneous-Use', ':=', String(plano.shared_users || 1)],
+  ];
+
+  if (plano.tipo_validade === 'acumulado') {
+    checkValues.push([username, 'Max-All-Session', ':=', String(tempoSegundos)]);
+  } else {
+    const dataExpiracao = new Date(Date.now() + tempoSegundos * 1000);
+    const expirationStr = formatRadiusExpirationDate(dataExpiracao);
+    checkValues.push([username, 'Expiration', ':=', expirationStr]);
+  }
+
   // radcheck
   await db.query(
     `INSERT INTO radcheck (username, attribute, op, value)
-     VALUES (?, 'Cleartext-Password', ':=', ?),
-            (?, 'Max-All-Session', ':=', ?),
-            (?, 'Simultaneous-Use', ':=', '1')`,
-    [username, senha, username, String(tempoSegundos), username]
+     VALUES (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?)`,
+    checkValues.flat()
   );
 
   // radreply
   await db.query(
     `INSERT INTO radreply (username, attribute, op, value)
      VALUES (?, 'Mikrotik-Rate-Limit', ':=', ?),
-            (?, 'Session-Timeout', ':=', ?)`,
-    [username, rateLimit, username, tempoSegundos]
+            (?, 'Session-Timeout', ':=', ?),
+            (?, 'Acct-Interim-Interval', ':=', '120')`,
+    [username, rateLimit, username, String(tempoSegundos), username]
   );
 
   // radusergroup

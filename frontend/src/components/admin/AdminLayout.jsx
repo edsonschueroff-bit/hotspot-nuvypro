@@ -38,6 +38,7 @@ export default function AdminLayout({ children }) {
 
   const [empresaStatusFinanceiro, setEmpresaStatusFinanceiro] = useState(null);
   const [empresaTrialAte, setEmpresaTrialAte] = useState(null);
+  const [empresaModulos, setEmpresaModulos] = useState(null);
 
   useEffect(() => {
     const fetchLogo = async () => {
@@ -51,6 +52,7 @@ export default function AdminLayout({ children }) {
           setEmpresaLogo(data.logo_url);
           setEmpresaStatusFinanceiro(data.status_financeiro);
           setEmpresaTrialAte(data.trial_ate);
+          setEmpresaModulos(data.modulos_liberados || null);
         }
       } catch (e) { /* silencioso */ }
     };
@@ -96,6 +98,27 @@ export default function AdminLayout({ children }) {
     finance: '#16a34a',
     settings: '#64748b',
     super: '#7c3aed',
+  };
+
+  const keyToPlanModulo = {
+    'mikrotik_group': 'mod_vpn',
+    'mikrotiks': 'mod_vpn',
+    'vpn': 'mod_vpn',
+    'clientes_group': 'mod_hotspot',
+    'clientes': 'mod_hotspot',
+    'leads': 'mod_leads',
+    'whatsapp': 'mod_whatsapp',
+    'campanhas': 'mod_whatsapp',
+    'crm': 'mod_whatsapp',
+    'crm-ia': 'mod_ia',
+    'cupons': 'mod_cupons',
+    'cardapio': 'mod_cardapio',
+    'analytics': 'mod_analytics',
+    'nps': 'mod_analytics',
+    'vouchers': 'mod_vouchers',
+    'filiais': 'mod_filiais',
+    'webhooks': 'mod_webhooks',
+    'radius_group': 'mod_hotspot'
   };
 
   const menuSections = [
@@ -585,6 +608,21 @@ export default function AdminLayout({ children }) {
                     'saas-dre': null
                   };
 
+                  // 1. Filtragem por Módulo do Plano SaaS do Tenant (Feature Gating À La Carte)
+                  if (!isSuperAdmin && empresaModulos) {
+                    const planModKey = keyToPlanModulo[item.key];
+                    if (planModKey && empresaModulos[planModKey] === false && !item.children) {
+                      return null;
+                    }
+                    if (item.children) {
+                      const temFilhoNoPlano = item.children.some(child => {
+                        const childModKey = keyToPlanModulo[child.key] || planModKey;
+                        return !childModKey || empresaModulos[childModKey] !== false;
+                      });
+                      if (!temFilhoNoPlano) return null;
+                    }
+                  }
+
                   if (item.key === 'dashboard' || item.key === 'minhas-faturas' || item.key === 'dre') {
                     // sempre renderizar
                   } else if (isSuperAdmin || item.key === 'saas_financeiro_group') {
@@ -645,6 +683,8 @@ export default function AdminLayout({ children }) {
                         {isOpen && !sidebarCollapsed && (
                           <div className="mt-0.5 ml-7 pl-3 border-l-2 border-[#e2e8f0] space-y-0.5 pb-1">
                             {item.children.map(child => {
+                              const childModKey = keyToPlanModulo[child.key] || keyToPlanModulo[item.key];
+                              if (!isSuperAdmin && empresaModulos && childModKey && empresaModulos[childModKey] === false) return null;
                               const childModulo = childKeyToModulo[child.key] || child.key;
                               if (!isSuperAdmin && childKeyToModulo[child.key] && !hasPermission(childModulo, 'ver')) return null;
                               const childActive = isActive(child.path);

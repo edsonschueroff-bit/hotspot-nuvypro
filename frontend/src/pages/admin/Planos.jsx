@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import AdminLayout from "../../components/admin/AdminLayout";
 import { PageHeader } from "@/components/ui";
-import { Send, Plus, Edit2, Trash2, Copy, AlertTriangle, X, Check } from "lucide-react";
+import { Plus, Edit2, Trash2, Copy, AlertTriangle, X, Check } from "lucide-react";
 
 export default function Planos() {
   const [planos, setPlanos] = useState([]);
@@ -13,6 +13,7 @@ export default function Planos() {
     nome: "",
     descricao: "",
     duracao: 1,
+    tipo_validade: "corrido",
     valor: "0,00",
     velocidade_download: 0,
     velocidade_upload: 0,
@@ -75,6 +76,7 @@ export default function Planos() {
           descricao: form.descricao,
           valor: valorEmCentavos,
           duracao_minutos: parseInt(form.duracao),
+          tipo_validade: form.tipo_validade || "corrido",
           velocidade_down: parseInt(form.velocidade_download),
           velocidade_up: parseInt(form.velocidade_upload),
           mikrotik_id: parseInt(form.mikrotik_id),
@@ -98,6 +100,7 @@ export default function Planos() {
       descricao: plano.descricao,
       valor: (plano.valor / 100).toFixed(2).replace(".", ","),
       duracao: plano.duracao_minutos,
+      tipo_validade: plano.tipo_validade || "corrido",
       velocidade_download: plano.velocidade_down,
       velocidade_upload: plano.velocidade_up,
       mikrotik_id: plano.mikrotik_id,
@@ -128,6 +131,7 @@ export default function Planos() {
       descricao: plano.descricao,
       valor: (plano.valor / 100).toFixed(2).replace(".", ","),
       duracao: plano.duracao_minutos,
+      tipo_validade: plano.tipo_validade || "corrido",
       velocidade_download: plano.velocidade_down,
       velocidade_upload: plano.velocidade_up,
       mikrotik_id: plano.mikrotik_id,
@@ -137,21 +141,6 @@ export default function Planos() {
     });
     setEditando(null);
     setShowModal(true);
-  };
-
-  const enviarParaMikrotik = async (id) => {
-    if (!confirm("Deseja realmente enviar esse plano para o Mikrotik?")) return;
-    try {
-      const res = await fetch(`/api/planos/${id}/enviar`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      alert("Plano enviado com sucesso para o Mikrotik!");
-    } catch (err) {
-      alert("Erro ao enviar plano: " + err.message);
-    }
   };
 
   return (
@@ -247,7 +236,7 @@ export default function Planos() {
                 <thead>
                   <tr className="border-b border-[#e2e8f0] bg-[#f8fafc]">
                     <th className="px-6 py-3.5 text-[10px] font-600 text-slate-400 uppercase tracking-wider">Nome / Descrição</th>
-                    <th className="px-6 py-3.5 text-[10px] font-600 text-slate-400 uppercase tracking-wider">Duração</th>
+                    <th className="px-6 py-3.5 text-[10px] font-600 text-slate-400 uppercase tracking-wider">Duração & Tipo</th>
                     <th className="px-6 py-3.5 text-[10px] font-600 text-slate-400 uppercase tracking-wider">Velocidade</th>
                     <th className="px-6 py-3.5 text-[10px] font-600 text-slate-400 uppercase tracking-wider">Preço</th>
                     <th className="px-6 py-3.5 text-[10px] font-600 text-slate-400 uppercase tracking-wider">Status</th>
@@ -262,9 +251,18 @@ export default function Planos() {
                         {p.descricao && <div className="text-[12px] text-slate-500 mt-0.5">{p.descricao}</div>}
                       </td>
                       <td className="px-6 py-4 font-500 text-slate-700">
-                        <span className="inline-flex items-center gap-1 bg-[#f8fafc] border border-[#e2e8f0] px-2.5 py-1 rounded-md text-slate-700 text-[12px] font-500">
-                          ⏱ {p.duracao_minutos} min
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className="inline-flex items-center gap-1 bg-[#f8fafc] border border-[#e2e8f0] px-2.5 py-0.5 rounded-md text-slate-700 text-[12px] font-500 w-fit">
+                            ⏱ {p.duracao_minutos} min
+                          </span>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-600 border w-fit ${
+                            p.tipo_validade === 'acumulado'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}>
+                            {p.tipo_validade === 'acumulado' ? '⏳ Banco de Horas' : '⏱️ Tempo Corrido'}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 font-500 text-slate-700">
                         <div className="flex flex-col gap-0.5 text-[12px] font-500">
@@ -290,13 +288,6 @@ export default function Planos() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => enviarParaMikrotik(p.id)}
-                            className="p-1.5 bg-white hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 rounded-md border border-[#e2e8f0] transition-colors cursor-pointer"
-                            title="Enviar para Mikrotik"
-                          >
-                            <Send className="w-3.5 h-3.5" />
-                          </button>
                           <button
                             onClick={() => handleEditar(p)}
                             className="p-1.5 bg-white hover:bg-blue-50 text-slate-500 hover:text-[#2563eb] rounded-md border border-[#e2e8f0] transition-colors cursor-pointer"
@@ -394,6 +385,64 @@ export default function Planos() {
                       value={form.valor} 
                       onChange={(e) => setForm({ ...form, valor: e.target.value })} 
                     />
+                  </div>
+                </div>
+
+                {/* Modo de Contagem de Tempo */}
+                <div>
+                  <label className="block text-[11px] font-600 text-slate-600 uppercase tracking-wide mb-1.5">
+                    Modo de Contagem de Tempo
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <label
+                      className={`p-3 rounded-lg border cursor-pointer transition-all flex items-start gap-2.5 ${
+                        form.tipo_validade === "corrido"
+                          ? "border-[#2563eb] bg-[#eff6ff] text-slate-900 shadow-2xs"
+                          : "border-[#e2e8f0] bg-white hover:bg-slate-50 text-slate-700"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="tipo_validade"
+                        value="corrido"
+                        checked={form.tipo_validade === "corrido"}
+                        onChange={(e) => setForm({ ...form, tipo_validade: e.target.value })}
+                        className="mt-0.5 text-[#2563eb] focus:ring-[#2563eb]"
+                      />
+                      <div>
+                        <span className="text-[12px] font-700 text-slate-900 flex items-center gap-1">
+                          ⏱️ Tempo Corrido
+                        </span>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                          Expira {form.duracao || 0} min após ativação (mesmo desconectado).
+                        </p>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`p-3 rounded-lg border cursor-pointer transition-all flex items-start gap-2.5 ${
+                        form.tipo_validade === "acumulado"
+                          ? "border-[#2563eb] bg-[#eff6ff] text-slate-900 shadow-2xs"
+                          : "border-[#e2e8f0] bg-white hover:bg-slate-50 text-slate-700"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="tipo_validade"
+                        value="acumulado"
+                        checked={form.tipo_validade === "acumulado"}
+                        onChange={(e) => setForm({ ...form, tipo_validade: e.target.value })}
+                        className="mt-0.5 text-[#2563eb] focus:ring-[#2563eb]"
+                      />
+                      <div>
+                        <span className="text-[12px] font-700 text-slate-900 flex items-center gap-1">
+                          ⏳ Banco de Horas
+                        </span>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                          Desconta apenas os minutos em que o cliente estiver online.
+                        </p>
+                      </div>
+                    </label>
                   </div>
                 </div>
 

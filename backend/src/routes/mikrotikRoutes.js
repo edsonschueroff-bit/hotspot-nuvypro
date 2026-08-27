@@ -429,11 +429,13 @@ router.post("/:id/enviar-login", async (req, res) => {
     // Resolve html-directory real do profile ativo (fallback: "hotspot").
     const htmlDir = await resolveHotspotHtmlDir(conn);
     const dstPath = `${htmlDir}/login.html`;
+    const dstStatus = `${htmlDir}/status.html`;
+    const statusFetchUrl = `https://${systemDomain}/api/hotspot-status/${mikrotik.id}`;
 
     let ok = false;
     let mensagem = "";
 
-    // Tentar HTTPS
+    // Tentar HTTPS para login.html
     try {
       const r = await safeWrite("/tool/fetch", [
         `=url=${fetchUrl}`,
@@ -443,11 +445,11 @@ router.post("/:id/enviar-login", async (req, res) => {
       ]);
       if (r !== "timeout") {
         ok = true;
-        mensagem = `login.html enviado em ${dstPath} (HTTPS)`;
+        mensagem = `login.html e status.html enviados em ${htmlDir}/ (HTTPS)`;
       }
     } catch (e) { /* tenta HTTP */ }
 
-    // Fallback HTTP
+    // Fallback HTTP para login.html
     if (!ok) {
       try {
         const r = await safeWrite("/tool/fetch", [
@@ -457,9 +459,27 @@ router.post("/:id/enviar-login", async (req, res) => {
         ]);
         if (r !== "timeout") {
           ok = true;
-          mensagem = `login.html enviado em ${dstPath} (HTTP)`;
+          mensagem = `login.html e status.html enviados em ${htmlDir}/ (HTTP)`;
         }
       } catch (e) { /* fallback manual */ }
+    }
+
+    // Enviar status.html também
+    try {
+      await safeWrite("/tool/fetch", [
+        `=url=${statusFetchUrl}`,
+        `=dst-path=${dstStatus}`,
+        "=mode=https",
+        "=check-certificate=no",
+      ]);
+    } catch (e) {
+      try {
+        await safeWrite("/tool/fetch", [
+          `=url=http://${systemDomain}/api/hotspot-status/${mikrotik.id}`,
+          `=dst-path=${dstStatus}`,
+          "=mode=http",
+        ]);
+      } catch (e2) {}
     }
 
     try { await conn.close(); } catch (e) { }

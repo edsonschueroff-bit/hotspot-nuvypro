@@ -80,12 +80,23 @@ async function liberarUsuario({ mac, ip, plano, empresa_id, cpf, telefone, clien
     // compliance Marco Civil via syncConnectionLogs.
     await db.query(`DELETE FROM radacct WHERE username = ?`, [username]);
 
-    // Limite TOTAL acumulado (cumulativo, nao diario) + 1 sessao unica
+    const { formatRadiusExpirationDate } = require("../utils/radiusDateHelper");
+
+    // Limite de acesso: Tempo Corrido (Expiration) ou Banco de Horas (Max-All-Session)
     const checkValues = [
       [username, 'Cleartext-Password', ':=', senha],
-      [username, 'Max-All-Session', ':=', String(tempoSegundos)],
-      [username, 'Simultaneous-Use', ':=', '1'],
+      [username, 'Simultaneous-Use', ':=', String(p.shared_users || 1)],
     ];
+
+    if (p.tipo_validade === 'acumulado') {
+      checkValues.push([username, 'Max-All-Session', ':=', String(tempoSegundos)]);
+    } else {
+      // Padrão: Tempo Corrido a partir do momento da liberação
+      const dataExpiracao = new Date(Date.now() + tempoSegundos * 1000);
+      const expirationStr = formatRadiusExpirationDate(dataExpiracao);
+      checkValues.push([username, 'Expiration', ':=', expirationStr]);
+    }
+
     await db.query(
       `INSERT INTO radcheck (username, attribute, op, value) VALUES
        (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?)`,

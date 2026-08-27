@@ -304,6 +304,10 @@ Todos os 11 itens priorizados pelo cliente foram finalizados com sucesso:
     - **Timezone Operacional:** Normalizado para o Horário de Brasília (`-03:00`) com `CONVERT_TZ` evitando virada prematura de dia às 21h em relatórios.
     - **Regras Globais de Faturamento SaaS & Anti-Retroatividade:** Proteção contra geração de faturas no passado no `saasBillingJob.js`, garantia do ciclo de 30 dias após pagamento e regularização da empresa do Lucas.
 
+17. **Planos Modulares & Página Dedicada de Edição (CONCLUÍDO 26/08/2026):**
+    - **Página Dedicada ([`SaasPlanoEditor.jsx`](file:///var/www/hotspot/frontend/src/pages/super/SaasPlanoEditor.jsx)):** Rotas `/super/saas-planos/novo` e `/super/saas-planos/editar/:id` substituindo o modal por uma página completa 2 colunas: formulário tabulado (Comercial, Limites, Módulos) + **Live Preview em Tempo Real** do Card.
+    - **Feature Gating Granular:** 13 switches modulares (VPN, Hotspot, Leads, WhatsApp, IA, Vendas PIX, Cupons, Cardápio, Analytics, Vouchers, Filiais, SMTP, Webhooks) com presets de 1-clique e filtragem automática de menus na sidebar do tenant ([`AdminLayout.jsx`](file:///var/www/hotspot/frontend/src/components/admin/AdminLayout.jsx)).
+
 ---
 
 ### 📊 Matriz Atualizada de Integrações do Sistema (Status Oficial):
@@ -319,6 +323,7 @@ Todos os 11 itens priorizados pelo cliente foram finalizados com sucesso:
 10. **Webhooks Outbound Hub:** ✅ Operacional (HMAC-SHA256, eventos de leads, pagamentos e cupons).
 11. **Open Graph & Social Share Preview:** ✅ Operacional (banner Nuvy Pro em 1200x630 e tags completas).
 12. **Identidade Visual & Branding:** ✅ Operacional (**Nuvy Pro** — Design Precision Light).
+13. **Planos Modulares & Feature Gating:** ✅ Operacional (Venda à la carte e adaptação da sidebar por tenant).
 
 ---
 

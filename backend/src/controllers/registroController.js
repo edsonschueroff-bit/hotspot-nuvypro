@@ -70,12 +70,29 @@ exports.registrarEmpresa = async (req, res) => {
 
     await conn.beginTransaction();
 
-    // 1. Criar empresa em modo TRIAL de 7 dias
+    const planoId = req.body.plano_id ? parseInt(req.body.plano_id, 10) : null;
+    let diasTrial = 7;
+    let saasPlanoId = null;
+
+    if (planoId) {
+      const [[planoRow]] = await conn.execute(
+        "SELECT id, dias_trial, valor_mensal, tipo_cobranca FROM saas_planos WHERE id = ? AND ativo = 1",
+        [planoId]
+      );
+      if (planoRow) {
+        saasPlanoId = planoRow.id;
+        if (planoRow.dias_trial !== undefined && planoRow.dias_trial !== null) {
+          diasTrial = parseInt(planoRow.dias_trial, 10);
+        }
+      }
+    }
+
+    // 1. Criar empresa em modo TRIAL (dias configurados no plano ou 7 dias)
     const [empresaResult] = await conn.execute(
       `INSERT INTO empresas 
-       (nome, slug, cnpj, email, telefone, ativo, status_financeiro, trial_ate, tipo_cobranca, dia_vencimento) 
-       VALUES (?, ?, ?, ?, ?, 1, 'trial', DATE_ADD(NOW(), INTERVAL 7 DAY), 'fixo', 10)`,
-      [nome.trim(), slug, cnpj || null, email.trim(), telefone || null]
+       (nome, slug, cnpj, email, telefone, ativo, status_financeiro, trial_ate, saas_plano_id, tipo_cobranca, dia_vencimento) 
+       VALUES (?, ?, ?, ?, ?, 1, 'trial', DATE_ADD(NOW(), INTERVAL ? DAY), ?, 'fixo', 10)`,
+      [nome.trim(), slug, cnpj || null, email.trim(), telefone || null, diasTrial, saasPlanoId]
     );
     const empresaId = empresaResult.insertId;
 

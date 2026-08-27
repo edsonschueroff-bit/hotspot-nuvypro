@@ -93,17 +93,17 @@ async function processarAvisoExpiracao(auto) {
 
         // Busca sessoes ativas no radacct cujo tempo limite (Max-All-Session) falta entre 1 e X minutos
         const [sessoes] = await db.query(
-            `SELECT ra.username, ra.nasipaddress,
-              rc.value AS max_tempo,
+            `SELECT ra.username, MAX(ra.nasipaddress) as nasipaddress,
+              MAX(rc.value) AS max_tempo,
               COALESCE(SUM(
                 IF(ra.acctstoptime IS NULL,
                    UNIX_TIMESTAMP() - UNIX_TIMESTAMP(ra.acctstarttime),
                    ra.acctsessiontime)
               ), 0) AS tempo_usado,
-              l.nome, l.telefone
+              MAX(l.nome) as nome, MAX(l.telefone) as telefone
        FROM radacct ra
-       JOIN radcheck rc ON rc.username = ra.username AND rc.attribute = 'Max-All-Session'
-       LEFT JOIN leads l ON l.cpf = ra.username OR l.telefone = ra.username
+       JOIN radcheck rc ON rc.username COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci AND rc.attribute = 'Max-All-Session'
+       LEFT JOIN leads l ON l.cpf COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci OR l.telefone COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci
        WHERE ra.acctstoptime IS NULL
        GROUP BY ra.username
        HAVING (CAST(max_tempo AS SIGNED) - tempo_usado) BETWEEN 60 AND (? * 60)`,
@@ -118,9 +118,9 @@ async function processarAvisoExpiracao(auto) {
             // Evitar notificar mais de uma vez a cada 6 horas para a mesma sessao/username
             const [[jaEnviado]] = await db.query(
                 `SELECT id FROM crm_automacoes_log
-         WHERE empresa_id = ? AND automacao_tipo = 'expiracao_aviso' AND telefone = ?
-           AND enviado_em >= DATE_SUB(NOW(), INTERVAL 6 HOUR)
-         LIMIT 1`,
+          WHERE empresa_id = ? AND automacao_tipo = 'expiracao_aviso' AND telefone = ?
+            AND enviado_em >= DATE_SUB(NOW(), INTERVAL 6 HOUR)
+          LIMIT 1`,
                 [auto.empresa_id, telFormatado]
             );
 
@@ -150,9 +150,9 @@ async function processarPixAbandonado(auto) {
 
         // Busca pagamentos pendentes criados entre X minutos e 1 hora atras
         const [pags] = await db.query(
-            `SELECT p.id, p.telefone, p.cpf, p.nome_plano, p.qrcode_url, p.criado_em, l.nome
+            `SELECT p.id, p.telefone, p.cpf, p.nome_plano, p.criado_em, l.nome
        FROM pagamentos p
-       LEFT JOIN leads l ON l.cpf = p.cpf OR l.telefone = p.telefone
+       LEFT JOIN leads l ON (l.cpf COLLATE utf8mb4_unicode_ci = p.cpf COLLATE utf8mb4_unicode_ci OR l.telefone COLLATE utf8mb4_unicode_ci = p.telefone COLLATE utf8mb4_unicode_ci) AND l.empresa_id = p.empresa_id
        WHERE p.empresa_id = ? AND p.status = 'pending' AND p.telefone IS NOT NULL
          AND p.criado_em BETWEEN DATE_SUB(NOW(), INTERVAL 60 MINUTE) AND DATE_SUB(NOW(), INTERVAL ? MINUTE)`,
             [auto.empresa_id, tempoMinutos]
@@ -165,8 +165,8 @@ async function processarPixAbandonado(auto) {
             // Verificar se ja enviou cobranca deste pagamento_id
             const [[jaEnviado]] = await db.query(
                 `SELECT id FROM crm_automacoes_log
-         WHERE empresa_id = ? AND automacao_tipo = 'pix_abandonado' AND referencia_id = ?
-         LIMIT 1`,
+          WHERE empresa_id = ? AND automacao_tipo = 'pix_abandonado' AND referencia_id = ?
+          LIMIT 1`,
                 [auto.empresa_id, String(pag.id)]
             );
 
@@ -175,16 +175,15 @@ async function processarPixAbandonado(auto) {
             const mensagemFinal = processarTags(auto.mensagem, {
                 nome: pag.nome || "Cliente",
                 telefone: pag.telefone,
-                plano: pag.nome_plano || "Plano Wi-Fi",
-                link_pix: pag.qrcode_url || "",
+                plano: pag.nome_plano || "Acesso Wi-Fi",
             });
 
             try {
                 await enviarMensagemDireta(telFormatado, mensagemFinal, auto.empresa_id);
-                await registrarLogEHistorico(auto.empresa_id, "pix_abandonado", telFormatado, pag.nome, mensagemFinal, "enviado", pag.id);
-                console.log(`[crmAutomationsJob] Recuperação PIX enviada para ${telFormatado}`);
+                await registrarLogEHistorico(auto.empresa_id, "pix_abandonado", telFormatado, pag.nome, mensagemFinal, "enviado", String(pag.id));
+                console.log(`[crmAutomationsJob] PIX abandonado enviado para ${telFormatado}`);
             } catch (sendErr) {
-                console.warn(`[crmAutomationsJob] Falha na recuperação PIX para ${telFormatado}:`, sendErr.message);
+                console.warn(`[crmAutomationsJob] Falha no envio de PIX abandonado para ${telFormatado}:`, sendErr.message);
             }
         }
     } catch (err) {
@@ -207,11 +206,11 @@ async function processarRetencaoAusentes(auto) {
              FROM leads l
              LEFT JOIN radius_users ru ON ru.empresa_id = ?
                AND (
-                 (l.cpf IS NOT NULL AND l.cpf != '' AND ru.username = l.cpf)
-                 OR RIGHT(REGEXP_REPLACE(ru.username, '[^0-9]', ''), 8)
-                    = RIGHT(REGEXP_REPLACE(l.telefone, '[^0-9]', ''), 8)
+                 (l.cpf IS NOT NULL AND l.cpf != '' AND ru.username COLLATE utf8mb4_unicode_ci = l.cpf COLLATE utf8mb4_unicode_ci)
+                 OR RIGHT(REGEXP_REPLACE(ru.username, '[^0-9]', ''), 8) COLLATE utf8mb4_unicode_ci
+                    = RIGHT(REGEXP_REPLACE(l.telefone, '[^0-9]', ''), 8) COLLATE utf8mb4_unicode_ci
                )
-             LEFT JOIN radacct ra ON ra.username = ru.username
+             LEFT JOIN radacct ra ON ra.username COLLATE utf8mb4_unicode_ci = ru.username COLLATE utf8mb4_unicode_ci
              WHERE l.empresa_id = ? AND l.telefone IS NOT NULL AND l.telefone != ''
              GROUP BY l.telefone
              HAVING ult_conexao <= DATE_SUB(NOW(), INTERVAL ? DAY)`,
@@ -264,12 +263,12 @@ async function processarRetornoCliente(auto) {
                MAX(l.nome)     as nome,
                MAX(l.telefone) as telefone
              FROM radacct ra
-             JOIN radius_users ru ON ru.username = ra.username COLLATE utf8mb4_unicode_ci AND ru.empresa_id = ?
+             JOIN radius_users ru ON ru.username COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci AND ru.empresa_id = ?
              LEFT JOIN leads l ON l.empresa_id = ?
                AND (
-                 (l.cpf IS NOT NULL AND l.cpf != '' AND l.cpf = ru.username)
-                 OR RIGHT(REGEXP_REPLACE(l.telefone, '[^0-9]', ''), 8)
-                    = RIGHT(REGEXP_REPLACE(ru.username, '[^0-9]', ''), 8)
+                 (l.cpf IS NOT NULL AND l.cpf != '' AND l.cpf COLLATE utf8mb4_unicode_ci = ru.username COLLATE utf8mb4_unicode_ci)
+                 OR RIGHT(REGEXP_REPLACE(l.telefone, '[^0-9]', ''), 8) COLLATE utf8mb4_unicode_ci
+                    = RIGHT(REGEXP_REPLACE(ru.username, '[^0-9]', ''), 8) COLLATE utf8mb4_unicode_ci
                )
              WHERE ra.acctstarttime >= DATE_SUB(NOW(), INTERVAL 10 MINUTE)
                AND l.telefone IS NOT NULL AND l.telefone != ''
@@ -277,7 +276,7 @@ async function processarRetornoCliente(auto) {
              HAVING (
                SELECT MAX(ra2.acctstarttime)
                FROM   radacct ra2
-               WHERE  ra2.username = ra.username
+               WHERE  ra2.username COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci
                  AND  DATE(ra2.acctstarttime) < CURDATE()
              ) <= DATE_SUB(NOW(), INTERVAL ? DAY)`,
             [auto.empresa_id, auto.empresa_id, diasAusente]
@@ -365,9 +364,9 @@ async function processarPesquisaNps(auto) {
         const [sessoesFinalizadas] = await db.query(
             `SELECT ra.username, ra.callingstationid, ra.acctstoptime, l.nome, l.telefone, e.nome AS empresa_nome
              FROM radacct ra
-             JOIN radius_users ru ON ru.username = ra.username COLLATE utf8mb4_unicode_ci
+             JOIN radius_users ru ON ru.username COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci
              JOIN empresas e ON e.id = ru.empresa_id
-             LEFT JOIN leads l ON l.cpf = ra.username OR l.telefone = ra.username
+             LEFT JOIN leads l ON (l.cpf COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci OR l.telefone COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci) AND l.empresa_id = ru.empresa_id
              WHERE ru.empresa_id = ? AND ra.acctstoptime BETWEEN DATE_SUB(NOW(), INTERVAL 60 MINUTE) AND DATE_SUB(NOW(), INTERVAL 30 MINUTE)
              LIMIT 50`,
             [auto.empresa_id]

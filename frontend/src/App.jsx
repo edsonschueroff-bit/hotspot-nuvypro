@@ -39,6 +39,7 @@ import Backups from "./pages/super/Backups";
 import AtualizarSistema from "./pages/super/AtualizarSistema";
 import PublicarAtualizacao from "./pages/super/PublicarAtualizacao";
 import SaasPlanos from "./pages/super/SaasPlanos";
+import SaasPlanoEditor from "./pages/super/SaasPlanoEditor";
 import SaasFaturas from "./pages/super/SaasFaturas";
 import RelatoriosSaas from "./pages/super/RelatoriosSaas";
 import Branding from "./pages/super/Branding";
@@ -142,6 +143,8 @@ function App() {
       <Route path="/super" element={<RotaPrivada><SuperDashboard /></RotaPrivada>} />
       <Route path="/super/empresas" element={<RotaPrivada><Empresas /></RotaPrivada>} />
       <Route path="/super/saas-planos" element={<RotaPrivada><SaasPlanos /></RotaPrivada>} />
+      <Route path="/super/saas-planos/novo" element={<RotaPrivada><SaasPlanoEditor /></RotaPrivada>} />
+      <Route path="/super/saas-planos/editar/:id" element={<RotaPrivada><SaasPlanoEditor /></RotaPrivada>} />
       <Route path="/super/saas-faturas" element={<RotaPrivada><SaasFaturas /></RotaPrivada>} />
       <Route path="/super/dre" element={<RotaPrivada><SuperDre /></RotaPrivada>} />
       <Route path="/super/relatorios" element={<RotaPrivada><RelatoriosSaas /></RotaPrivada>} />

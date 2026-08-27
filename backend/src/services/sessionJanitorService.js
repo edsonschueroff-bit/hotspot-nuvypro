@@ -9,12 +9,15 @@ let isJanitorRunning = false;
  */
 function sqlSessoesAtivas(alias = 'ra') {
   const p = alias ? `${alias}.` : '';
-  return `(${p}acctstoptime IS NULL AND ${p}acctstarttime >= DATE_SUB(NOW(), INTERVAL 2 HOUR) AND (${p}acctupdatetime IS NULL OR ${p}acctupdatetime >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)))`;
+  // Sessão ativa quando não recebeu Acct‑Stop e o último timestamp (acctupdatetime ou acctstarttime)
+  // está dentro de um intervalo curto (ex.: 4 minutos). Isso permite que sessões sem
+  // interim‑updates (acctupdatetime ainda = acctstarttime) sejam consideradas online.
+  return `(${p}acctstoptime IS NULL AND COALESCE(${p}acctupdatetime, ${p}acctstarttime) >= DATE_SUB(NOW(), INTERVAL 4 MINUTE))`;
 }
 
 /**
  * Janitor Service: Limpa e encerra sessões órfãs no FreeRADIUS (radacct)
- * - Identifica conexões cujo cliente perdeu o Wi-Fi sem enviar Acct-Stop
+ * - Identifica conexões antigas (> 24h) cujo roteador perdeu energia sem enviar Acct-Stop
  * - Idempotente, protegido contra concorrência e gera logs de auditoria
  * @returns {Promise<{ sessoesEncerradas: number }>}
  */
@@ -29,24 +32,32 @@ async function encerrarSessoesOrfas() {
   try {
     conn = await db.getConnection();
 
-    // Encerra sessões sem Acct-Stop que:
-    // 1. Ultrapassaram o Session-Timeout padrão (2 horas)
-    // 2. Ou não recebem interim-update de tráfego há mais de 15 minutos
+    // Encerra apenas sessoes verdadeiramente orfas (> 24h sem Acct-Stop)
     const [result] = await conn.execute(`
       UPDATE radacct 
       SET acctstoptime = COALESCE(acctupdatetime, DATE_ADD(acctstarttime, INTERVAL 2 HOUR)),
           acctsessiontime = TIMESTAMPDIFF(SECOND, acctstarttime, COALESCE(acctupdatetime, DATE_ADD(acctstarttime, INTERVAL 2 HOUR))),
-          acctterminatecause = 'Session-Timeout'
+          acctterminatecause = 'Lost-Carrier'
       WHERE acctstoptime IS NULL 
-        AND (
-          acctstarttime < DATE_SUB(NOW(), INTERVAL 2 HOUR)
-          OR (acctupdatetime IS NOT NULL AND acctupdatetime < DATE_SUB(NOW(), INTERVAL 15 MINUTE))
-        )
+        AND acctstarttime < DATE_SUB(NOW(), INTERVAL 24 HOUR)
     `);
 
     const encerradas = result.affectedRows || 0;
     if (encerradas > 0) {
       console.log(`[SessionJanitor] ${encerradas} sessão(ões) órfã(s) encerrada(s) com sucesso.`);
+    }
+
+    // Sincroniza vouchers utilizados com as sessões de conexão do FreeRADIUS
+    try {
+      await conn.execute(`
+        UPDATE vouchers v
+        JOIN radacct ra ON ra.username COLLATE utf8mb4_unicode_ci = v.codigo COLLATE utf8mb4_unicode_ci
+        SET v.status = 'utilizado',
+            v.primeiro_uso_em = COALESCE(v.primeiro_uso_em, ra.acctstarttime)
+        WHERE v.status = 'disponivel'
+      `);
+    } catch (vErr) {
+      console.warn('[SessionJanitor] Aviso ao sincronizar status de vouchers:', vErr.message);
     }
 
     return { sessoesEncerradas: encerradas, status: 'success' };

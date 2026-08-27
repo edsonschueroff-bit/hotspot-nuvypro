@@ -375,79 +375,323 @@ app.get("/api/hotspot-login/:mikrotikId", async (req, res) => {
 // O RouterOS substitui $(username), $(ip), $(uptime), $(bytes-in-nice), etc
 app.get("/api/hotspot-status/:mikrotikId", async (req, res) => {
   try {
+    const { mikrotikId } = req.params;
+    const systemDomain = process.env.SYSTEM_DOMAIN || "hotspot.nuvycore.online";
+    let empresaNome = "Wi-Fi Hotspot";
+    let logoUrl = null;
+    let btnUrl = "https://www.google.com.br";
+    let btnText = "Continuar Navegando";
+    let btnIconSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
+
+    try {
+      const [[mk]] = await db.query(
+        `SELECT m.nome as mk_nome, e.id as emp_id, e.nome as emp_nome, e.slug as emp_slug, e.logo_url,
+                e.pos_login_tipo, e.instagram_url, e.google_review_url, e.whatsapp_contato, e.site_url
+         FROM mikrotiks m 
+         LEFT JOIN empresas e ON e.id = m.empresa_id 
+         WHERE m.id = ?`,
+        [mikrotikId]
+      );
+      if (mk) {
+        if (mk.emp_nome) empresaNome = mk.emp_nome;
+        if (mk.logo_url) logoUrl = mk.logo_url;
+
+        // Verificar se a empresa tem cardápio ativo com produtos
+        let temCardapio = false;
+        if (mk.emp_id) {
+          const [[prodCount]] = await db.query(
+            `SELECT COUNT(*) as total FROM cardapio_produtos WHERE empresa_id = ? AND disponivel = 1`,
+            [mk.emp_id]
+          );
+          if (prodCount && prodCount.total > 0) temCardapio = true;
+        }
+
+        const tipo = mk.pos_login_tipo || (temCardapio ? "cardapio" : "padrao");
+
+        if (tipo === "cardapio" && (temCardapio || mk.emp_slug)) {
+          btnUrl = `https://${systemDomain}/cardapio/${mk.emp_slug || "default"}`;
+          btnText = "Ver Cardápio & Fazer Pedido";
+          btnIconSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>`;
+        } else if (tipo === "instagram" && mk.instagram_url) {
+          btnUrl = mk.instagram_url;
+          btnText = "Siga nosso Instagram";
+          btnIconSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>`;
+        } else if (tipo === "google_review" && mk.google_review_url) {
+          btnUrl = mk.google_review_url;
+          btnText = "Avalie-nos no Google (5 ⭐)";
+          btnIconSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+        } else if (tipo === "whatsapp" && mk.whatsapp_contato) {
+          const cleanNum = mk.whatsapp_contato.replace(/\D/g, "");
+          btnUrl = `https://wa.me/${cleanNum.startsWith("55") ? cleanNum : "55" + cleanNum}`;
+          btnText = "Falar no WhatsApp";
+          btnIconSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
+        } else if (tipo === "site" && mk.site_url) {
+          btnUrl = mk.site_url;
+          btnText = "Acessar Nosso Site";
+          btnIconSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
+        }
+      }
+    } catch (dbErr) {
+      console.warn("[hotspot-status] Erro ao buscar empresa:", dbErr.message);
+    }
+
     const html = `<!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta http-equiv="pragma" content="no-cache">
   <meta http-equiv="expires" content="-1">
   $(if refresh-timeout)<meta http-equiv="refresh" content="$(refresh-timeout-secs)">$(endif)
-  <title>Status - Hotspot</title>
+  <title>Status da Conexão - ${empresaNome}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
-      background: #0f111a; color: #e2e8f0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      min-height: 100vh; display: flex; align-items: center; justify-content: center;
-      padding: 20px;
+      background: #090d16;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
     }
-    .card {
-      background: #1a1d27; border: 1px solid #2d3348; border-radius: 16px;
-      padding: 32px; max-width: 420px; width: 100%;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    .container {
+      max-width: 400px;
+      width: 100%;
+      background: #131926;
+      border: 1px solid #1f293d;
+      border-radius: 20px;
+      padding: 24px 20px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
     }
-    .header { text-align: center; margin-bottom: 24px; }
-    .avatar {
-      width: 64px; height: 64px; border-radius: 50%;
-      background: linear-gradient(135deg, #3b82f6, #2563eb);
-      display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 16px; font-size: 24px; color: white; font-weight: bold;
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
     }
-    .header h1 { font-size: 20px; font-weight: 700; color: #f1f5f9; }
-    .header p { font-size: 13px; color: #64748b; margin-top: 4px; }
+    .wifi-icon-wrapper {
+      width: 56px;
+      height: 56px;
+      background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      box-shadow: 0 8px 20px rgba(16, 185, 129, 0.35);
+      position: relative;
+    }
     .status-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: #065f46; color: #6ee7b7; padding: 4px 12px;
-      border-radius: 20px; font-size: 12px; font-weight: 600; margin-top: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
     }
-    .status-dot { width: 8px; height: 8px; background: #34d399; border-radius: 50%; animation: pulse 2s infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
-    .stat {
-      background: #0d1117; border: 1px solid #2d3348; border-radius: 12px; padding: 16px;
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      background: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3); opacity: 0.6; }
+    }
+    .header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.3px;
+    }
+    .header .subtitle {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+    .header .user-highlight {
+      color: #38bdf8;
+      font-weight: 600;
+    }
+
+    /* Card Destaque de Tempo */
+    .highlight-card {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(6, 95, 70, 0.15) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .highlight-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .highlight-icon {
+      width: 36px;
+      height: 36px;
+      background: rgba(16, 185, 129, 0.2);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #34d399;
+    }
+    .highlight-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: #34d399;
+      letter-spacing: 0.5px;
+    }
+    .highlight-desc {
+      font-size: 12px;
+      color: #cbd5e1;
+      margin-top: 1px;
+    }
+    .highlight-val {
+      font-size: 18px;
+      font-weight: 800;
+      color: #ffffff;
+      font-family: monospace;
+      text-align: right;
+    }
+
+    /* Grid de Estatísticas */
+    .grid-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .stat-card {
+      background: #0d121d;
+      border: 1px solid #1f293d;
+      border-radius: 12px;
+      padding: 12px;
       text-align: center;
     }
-    .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-    .stat-value { font-size: 18px; font-weight: 700; color: #f1f5f9; }
-    .stat-value.blue { color: #60a5fa; }
-    .stat-value.green { color: #34d399; }
-    .stat-value.orange { color: #fb923c; }
+    .stat-card .stat-icon {
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+    .stat-card .stat-label {
+      font-size: 11px;
+      color: #64748b;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .stat-card .stat-value {
+      font-size: 15px;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-top: 3px;
+    }
+    .stat-card .stat-value.blue { color: #38bdf8; }
+    .stat-card .stat-value.green { color: #34d399; }
+    .stat-card .stat-value.amber { color: #fbbf24; }
+
+    /* Informações do Dispositivo */
+    .info-box {
+      background: #0d121d;
+      border: 1px solid #1f293d;
+      border-radius: 12px;
+      padding: 10px 14px;
+      margin-bottom: 18px;
+    }
     .info-row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 10px 0; border-bottom: 1px solid #1e2235;
-      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 12px;
+      border-bottom: 1px solid #161f30;
     }
     .info-row:last-child { border-bottom: none; }
-    .info-label { color: #64748b; }
-    .info-value { color: #e2e8f0; font-weight: 500; font-family: monospace; }
-    .btn-logout {
-      display: block; width: 100%; padding: 14px;
-      background: linear-gradient(135deg, #dc2626, #b91c1c);
-      color: white; border: none; border-radius: 12px;
-      font-size: 14px; font-weight: 600; cursor: pointer;
-      margin-top: 20px; transition: all 0.2s;
+    .info-label { color: #64748b; font-weight: 500; }
+    .info-val { color: #cbd5e1; font-weight: 600; font-family: monospace; font-size: 11px; }
+
+    /* Botões */
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
-    .btn-logout:hover { opacity: 0.9; transform: translateY(-1px); }
-    .footer { text-align: center; margin-top: 16px; font-size: 11px; color: #475569; }
-    $(if refresh-timeout).refresh-bar {
-      height: 3px; background: #1e293b; border-radius: 2px; margin-top: 16px; overflow: hidden;
+    .btn-primary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 13px;
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+      transition: all 0.2s ease;
+    }
+    .btn-primary:active {
+      transform: scale(0.98);
+    }
+    .btn-logout {
+      width: 100%;
+      padding: 11px;
+      background: transparent;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn-logout:hover {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #f87171;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 11px;
+      color: #475569;
+    }
+
+    $(if refresh-timeout)
+    .refresh-bar {
+      height: 3px;
+      background: #1e293b;
+      border-radius: 2px;
+      margin-top: 14px;
+      overflow: hidden;
     }
     .refresh-bar-fill {
-      height: 100%; background: linear-gradient(90deg, #3b82f6, #60a5fa);
+      height: 100%;
+      background: linear-gradient(90deg, #10b981, #38bdf8);
       animation: refill $(refresh-timeout-secs)s linear infinite;
     }
-    @keyframes refill { from { width: 0%; } to { width: 100%; } }
+    @keyframes refill {
+      from { width: 0%; }
+      to { width: 100%; }
+    }
     $(endif)
   </style>
   <script>
@@ -457,102 +701,121 @@ app.get("/api/hotspot-status/:mikrotikId", async (req, res) => {
     }
     $(endif)
     function doLogout() {
-      if (window.name == 'hotspot_status') {
-        window.open('$(link-logout)', 'hotspot_logout', 'toolbar=0,location=0,status=0,menubar=0,resizable=1,width=300,height=200');
-        window.close();
-        return false;
+      if (confirm('Deseja realmente desconectar do Wi-Fi?')) {
+        if (window.name == 'hotspot_status') {
+          window.open('$(link-logout)', 'hotspot_logout', 'toolbar=0,location=0,status=0,menubar=0,resizable=1,width=300,height=200');
+          window.close();
+          return false;
+        }
+        return true;
       }
-      return true;
+      return false;
     }
   </script>
 </head>
 <body $(if advert-pending == 'yes')onload="openAdvert()"$(endif)>
-  <div class="card">
+  <div class="container">
     <div class="header">
-      <div class="avatar">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+      <div class="wifi-icon-wrapper">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+          <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+          <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+          <line x1="12" y1="20" x2="12.01" y2="20"/>
+        </svg>
       </div>
-      $(if login-by == 'trial')
-        <h1>Acesso Trial</h1>
-      $(elif login-by != 'mac')
-        <h1>$(username)</h1>
-      $(else)
-        <h1>Conectado</h1>
-      $(endif)
-      <p>Sessao hotspot ativa</p>
+      <br/>
       <div class="status-badge">
         <span class="status-dot"></span>
-        Online
+        Conectado com Sucesso
       </div>
+      <h1>${empresaNome}</h1>
+      <p class="subtitle">
+        $(if login-by == 'trial')
+          Acesso Gratuito Ativo
+        $(elif login-by != 'mac')
+          Voucher: <span class="user-highlight">$(username)</span>
+        $(else)
+          Dispositivo Autorizado
+        $(endif)
+      </p>
     </div>
 
-    <div class="stats">
-      <div class="stat">
+    $(if session-time-left)
+    <!-- Destaque de Tempo Restante -->
+    <div class="highlight-card">
+      <div class="highlight-left">
+        <div class="highlight-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div>
+          <div class="highlight-title">Tempo Restante</div>
+          <div class="highlight-desc">Seu acesso expira em:</div>
+        </div>
+      </div>
+      <div class="highlight-val">$(session-time-left)</div>
+    </div>
+    $(endif)
+
+    <!-- Grid de Métricas -->
+    <div class="grid-stats">
+      <div class="stat-card">
         <div class="stat-label">Tempo Online</div>
         <div class="stat-value green">$(uptime)</div>
       </div>
-      $(if session-time-left)
-      <div class="stat">
-        <div class="stat-label">Tempo Restante</div>
-        <div class="stat-value orange">$(session-time-left)</div>
+      <div class="stat-card">
+        <div class="stat-label">Endereço IP</div>
+        <div class="stat-value blue" style="font-size:13px;font-family:monospace;">$(ip)</div>
       </div>
-      $(else)
-      <div class="stat">
-        <div class="stat-label">IP</div>
-        <div class="stat-value blue">$(ip)</div>
-      </div>
-      $(endif)
-      <div class="stat">
+      <div class="stat-card">
         <div class="stat-label">Download</div>
         <div class="stat-value blue">$(bytes-out-nice)</div>
       </div>
-      <div class="stat">
+      <div class="stat-card">
         <div class="stat-label">Upload</div>
         <div class="stat-value">$(bytes-in-nice)</div>
       </div>
     </div>
 
-    <div style="background:#0d1117;border:1px solid #2d3348;border-radius:12px;padding:14px;margin-bottom:8px;">
+    <!-- Detalhes do Dispositivo -->
+    <div class="info-box">
       <div class="info-row">
-        <span class="info-label">Endereco IP</span>
-        <span class="info-value">$(ip)</span>
+        <span class="info-label">Seu MAC</span>
+        <span class="info-val">$(mac)</span>
       </div>
+      $(if remain-bytes-total-nice)
       <div class="info-row">
-        <span class="info-label">MAC Address</span>
-        <span class="info-value">$(mac)</span>
-      </div>
-      $(if session-time-left)
-      <div class="info-row">
-        <span class="info-label">Conectado / Restante</span>
-        <span class="info-value">$(uptime) / $(session-time-left)</span>
+        <span class="info-label">Franquia Restante</span>
+        <span class="info-val">$(remain-bytes-total-nice)</span>
       </div>
       $(endif)
-      $(if blocked == 'yes')
+      $(if refresh-timeout)
       <div class="info-row">
-        <span class="info-label">Status</span>
-        <span class="info-value" style="color:#fb923c;">
-          <a href="$(link-advert)" target="hotspot_advert" style="color:#fb923c;text-decoration:none;">Publicidade pendente</a>
-        </span>
-      </div>
-      $(elif refresh-timeout)
-      <div class="info-row">
-        <span class="info-label">Atualiza em</span>
-        <span class="info-value">$(refresh-timeout)</span>
+        <span class="info-label">Atualização Automática</span>
+        <span class="info-val">a cada $(refresh-timeout)</span>
       </div>
       $(endif)
     </div>
 
-    $(if login-by-mac != 'yes')
-    <form action="$(link-logout)" name="logout" onsubmit="return doLogout()">
-      <button type="submit" class="btn-logout">Desconectar</button>
-    </form>
-    $(endif)
+    <!-- Ações -->
+    <div class="actions">
+      <a href="${btnUrl}" class="btn-primary" target="_blank" rel="noopener">
+        ${btnIconSvg}
+        ${btnText}
+      </a>
+
+      $(if login-by-mac != 'yes')
+      <form action="$(link-logout)" name="logout" onsubmit="return doLogout()">
+        <button type="submit" class="btn-logout">Desconectar do Wi-Fi</button>
+      </form>
+      $(endif)
+    </div>
 
     $(if refresh-timeout)
     <div class="refresh-bar"><div class="refresh-bar-fill"></div></div>
     $(endif)
 
-    <div class="footer">Hotspot WiFi &bull; Protegido por LGPD</div>
+    <div class="footer">${empresaNome} &bull; Wi-Fi Seguro</div>
   </div>
 </body>
 </html>`;
@@ -561,7 +824,8 @@ app.get("/api/hotspot-status/:mikrotikId", async (req, res) => {
     res.setHeader("Cache-Control", "no-cache, no-store");
     res.send(html);
   } catch (err) {
-    res.status(500).send("<h1>Erro</h1>");
+    console.error("[hotspot-status] Erro:", err);
+    res.status(500).send("<h1>Erro ao carregar status</h1>");
   }
 });
 
@@ -712,6 +976,12 @@ app.get("/hotspot/redirect/:mikrotikId", async (req, res) => {
 const cron = require('node-cron');
 const syncConnectionLogs = require('./src/jobs/syncConnectionLogs');
 const runCrmAutomationsJob = require('./src/jobs/crmAutomationsJob');
+const { encerrarSessoesOrfas } = require('./src/services/sessionJanitorService');
+
+// Limpeza e encerramento de sessões RADIUS órfãs a cada 2 minutos
+cron.schedule('*/2 * * * *', () => {
+  encerrarSessoesOrfas().catch(err => console.error('[CRON] Erro ao encerrar sessões órfãs:', err));
+});
 
 // Sincronizar logs de conexão do RADIUS (Marco Civil) a cada 5 minutos
 cron.schedule('*/5 * * * *', () => {

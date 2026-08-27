@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import AdminLayout from "../../components/admin/AdminLayout";
 import { PageHeader, Card, CardBody, PrimaryButton, SecondaryButton, Modal, StatusBadge } from "@/components/ui";
 import QRCode from "qrcode";
@@ -14,11 +14,14 @@ import {
   Clock, 
   Layers, 
   FileText,
-  AlertCircle
+  AlertCircle,
+  LayoutGrid,
+  ExternalLink
 } from "lucide-react";
 
 export default function Vouchers() {
   const { empresaSlug } = useParams();
+  const navigate = useNavigate();
   const [lotes, setLotes] = useState([]);
   const [planos, setPlanos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,10 +36,10 @@ export default function Vouchers() {
     prefixo: "WIFI"
   });
 
-  // Modal Visualização / Impressão Térmica
+  // Modal Visualização / Impressão
   const [loteDetalhe, setLoteDetalhe] = useState(null);
   const [loadingDetalhe, setLoadingDetalhe] = useState(false);
-  const [formatoImpressao, setFormatoImpressao] = useState("80mm"); // "58mm" | "80mm"
+  const [formatoImpressao, setFormatoImpressao] = useState("80mm"); // "58mm" | "80mm" | "a4_cartoes"
   const [qrCodes, setQrCodes] = useState({});
 
   const token = localStorage.getItem("admin_token");
@@ -98,7 +101,6 @@ export default function Vouchers() {
         setShowNovoModal(false);
         setFormNovo({ nome_lote: "", plano_id: planos[0]?.id || "", quantidade: 25, prefixo: "WIFI" });
         carregarLotes();
-        // Abrir diretamente a visualização do lote gerado
         if (data.lote?.id) {
           abrirDetalheLote(data.lote.id);
         }
@@ -121,13 +123,11 @@ export default function Vouchers() {
       if (res.ok) {
         const data = await res.json();
         setLoteDetalhe(data);
-        // Gerar QR codes para cada voucher
         const qrMap = {};
         for (const v of data.vouchers || []) {
           try {
-            // URL ou string do voucher para auto-preenchimento
-            const urlLogin = `https://${window.location.host}/login-hotspot?voucher=${encodeURIComponent(v.codigo)}`;
-            qrMap[v.codigo] = await QRCode.toDataURL(urlLogin, { width: 120, margin: 1 });
+            const urlLogin = `https://${window.location.host}/login-hotspot?voucher=${encodeURIComponent(v.codigo)}&auto=true`;
+            qrMap[v.codigo] = await QRCode.toDataURL(urlLogin, { width: 140, margin: 1 });
           } catch (qErr) {
             console.error("Erro ao gerar QR code:", qErr);
           }
@@ -174,7 +174,7 @@ export default function Vouchers() {
 
   return (
     <AdminLayout>
-      {/* Estilos dedicados para impressão térmica */}
+      {/* Estilos dedicados para impressão térmica e A4 */}
       <style>{`
         @media print {
           body * {
@@ -187,7 +187,7 @@ export default function Vouchers() {
             position: absolute;
             left: 0;
             top: 0;
-            width: ${formatoImpressao === "58mm" ? "58mm" : "80mm"};
+            width: ${formatoImpressao === "58mm" ? "58mm" : formatoImpressao === "80mm" ? "80mm" : "210mm"};
             margin: 0;
             padding: 0;
             background: #fff;
@@ -200,6 +200,12 @@ export default function Vouchers() {
             padding: 10px 4px;
             font-family: 'Courier New', Courier, monospace;
           }
+          .voucher-a4-card {
+            page-break-inside: avoid;
+            border: 1px solid #cbd5e1;
+            padding: 14px;
+            text-align: center;
+          }
         }
       `}</style>
 
@@ -207,12 +213,18 @@ export default function Vouchers() {
         <PageHeader
           icon={<Ticket className="w-6 h-6 text-[#2563eb]" />}
           title="Vouchers em Lote & PDV Físico"
-          subtitle="Gere pacotes de vouchers impressos para venda rápida no balcão ou recepção (Térmica 58mm/80mm)"
+          subtitle="Gere pacotes de vouchers impressos para balcão, recepção de hotéis ou displays de mesa com QR Code"
           actions={
-            <PrimaryButton onClick={() => setShowNovoModal(true)}>
-              <Plus className="w-4 h-4 mr-1.5" />
-              Novo Lote de Vouchers
-            </PrimaryButton>
+            <div className="flex items-center gap-2">
+              <SecondaryButton onClick={() => navigate(`/admin/${empresaSlug || "default"}/plaquinhas`)}>
+                <LayoutGrid className="w-4 h-4 mr-1.5" />
+                Gerador de Plaquinhas
+              </SecondaryButton>
+              <PrimaryButton onClick={() => setShowNovoModal(true)}>
+                <Plus className="w-4 h-4 mr-1.5" />
+                Novo Lote de Vouchers
+              </PrimaryButton>
+            </div>
           }
         />
 
@@ -284,7 +296,7 @@ export default function Vouchers() {
                 </div>
                 <h4 className="text-sm font-bold text-slate-800">Nenhum lote gerado ainda</h4>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-4">
-                  Crie pacotes de vouchers para imprimir na mini-impressora térmica e vender acessos no balcão.
+                  Crie pacotes de vouchers para imprimir na mini-impressora térmica ou em cartões A4 para seus clientes.
                 </p>
                 <PrimaryButton onClick={() => setShowNovoModal(true)}>
                   <Plus className="w-4 h-4 mr-1.5" />
@@ -434,71 +446,108 @@ export default function Vouchers() {
         </form>
       </Modal>
 
-      {/* Modal Visualização & Impressão Térmica */}
+      {/* Modal Visualização & Impressão Multi-Formato */}
       <Modal
         isOpen={!!loteDetalhe}
         onClose={() => setLoteDetalhe(null)}
-        title={`Visualizador de Impressão Térmica: ${loteDetalhe?.nome_lote || ""}`}
-        subtitle="Pré-visualização dos cupons de acesso para impressoras de 58mm ou 80mm"
+        title={`Impressão de Vouchers: ${loteDetalhe?.nome_lote || ""}`}
+        subtitle="Escolha o formato ideal para seu estabelecimento: Térmica (58/80mm) ou Cartões A4"
       >
         {loteDetalhe && (
           <div className="space-y-4">
             {/* Controles de Formato */}
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-700">Largura do Papel:</span>
+                <span className="text-xs font-bold text-slate-700">Formato:</span>
                 <button
                   onClick={() => setFormatoImpressao("58mm")}
                   className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${formatoImpressao === "58mm" ? "bg-[#2563eb] text-white shadow-sm" : "bg-white text-slate-700 border border-slate-300"}`}
                 >
-                  Rolo 58mm (Mini)
+                  Rolo 58mm
                 </button>
                 <button
                   onClick={() => setFormatoImpressao("80mm")}
                   className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${formatoImpressao === "80mm" ? "bg-[#2563eb] text-white shadow-sm" : "bg-white text-slate-700 border border-slate-300"}`}
                 >
-                  Rolo 80mm (Padrão)
+                  Rolo 80mm
+                </button>
+                <button
+                  onClick={() => setFormatoImpressao("a4_cartoes")}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${formatoImpressao === "a4_cartoes" ? "bg-[#2563eb] text-white shadow-sm" : "bg-white text-slate-700 border border-slate-300"}`}
+                >
+                  🪧 Cartões A4 (Mesa/Recepção)
                 </button>
               </div>
 
               <PrimaryButton onClick={handleImprimir}>
                 <Printer className="w-4 h-4 mr-1.5" />
-                🖨️ Imprimir Todos ({loteDetalhe.vouchers?.length})
+                🖨️ Imprimir ({loteDetalhe.vouchers?.length})
               </PrimaryButton>
             </div>
 
-            {/* Pré-visualização dos Cupons Térmicos */}
+            {/* Pré-visualização */}
             <div className="max-h-[500px] overflow-y-auto p-4 bg-slate-100 rounded-xl border border-slate-200 flex justify-center">
-              <div 
-                id="print-area" 
-                ref={printRef} 
-                style={{ width: formatoImpressao === "58mm" ? "240px" : "320px" }}
-                className="bg-white shadow-md p-2 space-y-4"
-              >
-                {loteDetalhe.vouchers?.map((v, idx) => (
-                  <div key={v.id} className="voucher-receipt text-center border-b-2 border-dashed border-slate-400 pb-4 pt-2">
-                    <p className="text-[11px] font-black uppercase tracking-wider text-slate-900">{loteDetalhe.empresa_nome || "NUVYCORE WI-FI"}</p>
-                    <p className="text-[9px] text-slate-500 uppercase tracking-widest font-mono">--- TICKET DE ACESSO WI-FI ---</p>
-                    
-                    <div className="my-2 p-2 bg-slate-50 border border-slate-200 rounded">
-                      <p className="text-[10px] text-slate-600 font-bold uppercase">{loteDetalhe.plano_nome}</p>
-                      <p className="text-[9px] text-slate-500 font-mono">Duração: {loteDetalhe.duracao_minutos} min | Vel: {loteDetalhe.velocidade_down || 5}M</p>
-                      <p className="text-sm font-black tracking-widest text-[#2563eb] font-mono mt-1">{v.codigo}</p>
-                    </div>
-
-                    {qrCodes[v.codigo] && (
-                      <div className="flex justify-center my-1">
-                        <img src={qrCodes[v.codigo]} alt="QR Code" className="w-20 h-20" />
+              {formatoImpressao === "a4_cartoes" ? (
+                /* Grade de Cartões A4 */
+                <div id="print-area" ref={printRef} className="w-full max-w-2xl bg-white p-4 grid grid-cols-2 gap-3 shadow-md">
+                  {loteDetalhe.vouchers?.map((v, idx) => (
+                    <div key={v.id} className="voucher-a4-card rounded-xl border-2 border-slate-200 bg-white p-3 flex flex-col items-center justify-between text-center relative overflow-hidden">
+                      <div className="w-full flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+                        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">{loteDetalhe.empresa_nome || "WI-FI VIP"}</span>
+                        <span className="text-[9px] font-semibold text-slate-400">#{idx + 1}</span>
                       </div>
-                    )}
+                      
+                      <div className="my-1">
+                        <p className="text-[10px] font-bold text-slate-700">{loteDetalhe.plano_nome}</p>
+                        <p className="text-[9px] text-slate-500 font-mono">{loteDetalhe.duracao_minutos} min de acesso</p>
+                      </div>
 
-                    <p className="text-[8px] text-slate-500 mt-1 leading-tight">
-                      Conecte-se à rede Wi-Fi e aponte a câmera para o QR Code ou digite o código acima na tela de login.
-                    </p>
-                    <p className="text-[8px] text-slate-400 font-mono mt-1">Voucher #{idx + 1} de {loteDetalhe.vouchers.length}</p>
-                  </div>
-                ))}
-              </div>
+                      {qrCodes[v.codigo] && (
+                        <div className="my-1 p-1.5 bg-slate-50 rounded-lg border border-slate-200 inline-block">
+                          <img src={qrCodes[v.codigo]} alt="QR Code" className="w-20 h-20" />
+                        </div>
+                      )}
+
+                      <div className="w-full mt-1 pt-1.5 border-t border-slate-100">
+                        <p className="text-xs font-black tracking-widest text-slate-900 font-mono">{v.codigo}</p>
+                        <p className="text-[8px] text-slate-400 mt-0.5">Aponte a câmera para conectar direto</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Rolo Térmico 58/80mm */
+                <div 
+                  id="print-area" 
+                  ref={printRef} 
+                  style={{ width: formatoImpressao === "58mm" ? "240px" : "320px" }}
+                  className="bg-white shadow-md p-2 space-y-4"
+                >
+                  {loteDetalhe.vouchers?.map((v, idx) => (
+                    <div key={v.id} className="voucher-receipt text-center border-b-2 border-dashed border-slate-400 pb-4 pt-2">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-slate-900">{loteDetalhe.empresa_nome || "NUVYCORE WI-FI"}</p>
+                      <p className="text-[9px] text-slate-500 uppercase tracking-widest font-mono">--- TICKET DE ACESSO WI-FI ---</p>
+                      
+                      <div className="my-2 p-2 bg-slate-50 border border-slate-200 rounded">
+                        <p className="text-[10px] text-slate-600 font-bold uppercase">{loteDetalhe.plano_nome}</p>
+                        <p className="text-[9px] text-slate-500 font-mono">Duração: {loteDetalhe.duracao_minutos} min | Vel: {loteDetalhe.velocidade_down || 5}M</p>
+                        <p className="text-sm font-black tracking-widest text-[#2563eb] font-mono mt-1">{v.codigo}</p>
+                      </div>
+
+                      {qrCodes[v.codigo] && (
+                        <div className="flex justify-center my-1">
+                          <img src={qrCodes[v.codigo]} alt="QR Code" className="w-20 h-20" />
+                        </div>
+                      )}
+
+                      <p className="text-[8px] text-slate-500 mt-1 leading-tight">
+                        Conecte-se à rede Wi-Fi e aponte a câmera para o QR Code ou digite o código acima na tela de login.
+                      </p>
+                      <p className="text-[8px] text-slate-400 font-mono mt-1">Voucher #{idx + 1} de {loteDetalhe.vouchers.length}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

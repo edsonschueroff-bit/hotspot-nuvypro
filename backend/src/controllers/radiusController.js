@@ -55,7 +55,7 @@ const vincularPlano = async (req, res) => {
     }
 
     const [[plano]] = await db.query(
-      'SELECT id, nome, velocidade_down, velocidade_up, duracao_minutos, mikrotik_id, shared_users FROM planos WHERE id = ? AND empresa_id = ?',
+      'SELECT id, nome, velocidade_down, velocidade_up, duracao_minutos, tipo_validade, mikrotik_id, shared_users FROM planos WHERE id = ? AND empresa_id = ?',
       [planoId, req.empresa_id]
     );
     if (!plano) return res.status(404).json({ error: 'Plano não encontrado' });
@@ -72,24 +72,38 @@ const vincularPlano = async (req, res) => {
     // connection_logs preserva compliance via syncConnectionLogs.
     await db.query('DELETE FROM radacct WHERE username = ?', [username]);
 
-    // Limite TOTAL acumulado + 1 sessao unica
+    const { formatRadiusExpirationDate } = require("../utils/radiusDateHelper");
+
+    const checkValues = [
+      [username, 'Simultaneous-Use', ':=', String(plano.shared_users || 1)]
+    ];
+
+    if (plano.tipo_validade === 'acumulado') {
+      checkValues.push([username, 'Max-All-Session', ':=', String(tempoSegundos)]);
+    } else {
+      const dataExpiracao = new Date(Date.now() + tempoSegundos * 1000);
+      const expirationStr = formatRadiusExpirationDate(dataExpiracao);
+      checkValues.push([username, 'Expiration', ':=', expirationStr]);
+    }
+
     await db.query(
       `INSERT INTO radcheck (username, attribute, op, value) VALUES
-       (?, 'Max-All-Session', ':=', ?),
-       (?, 'Simultaneous-Use', ':=', '1')`,
-      [username, String(tempoSegundos), username]
+       (?, ?, ?, ?), (?, ?, ?, ?)`,
+      checkValues.flat()
     );
 
-    // Adiciona replies para banda e tempo
+    // Adiciona replies para banda, tempo e intervalo de interim accounting (120s)
     await db.query(
       `INSERT INTO radreply (username, attribute, op, value) VALUES
        (?, 'Mikrotik-Rate-Limit', ':=', ?),
-       (?, 'Session-Timeout', ':=', ?)`,
+       (?, 'Session-Timeout', ':=', ?),
+       (?, 'Acct-Interim-Interval', ':=', '120')`,
       [
         username,
         `${plano.velocidade_up}M/${plano.velocidade_down}M`,
         username,
-        String(tempoSegundos)
+        String(tempoSegundos),
+        username
       ]
     );
 

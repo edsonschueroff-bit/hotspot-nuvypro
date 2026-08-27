@@ -14,15 +14,17 @@ export default function GeradorPlaquinhas() {
   const { user } = useAuth();
 
   // Estados de Personalização
-  const [tipoQr, setTipoQr] = useState("wifi"); // "wifi" | "url"
+  const [objetivo, setObjetivo] = useState("wifi"); // "wifi" | "voucher" | "cardapio" | "avaliacao"
   const [ssid, setSsid] = useState("");
   const [senha, setSenha] = useState("");
   const [seguranca, setSeguranca] = useState("WPA"); // "WPA" | "nopass"
   const [urlDestino, setUrlDestino] = useState("");
+  const [voucherCode, setVoucherCode] = useState("");
+  const [identificacaoMesa, setIdentificacaoMesa] = useState("Mesa 01");
   const [nomeEmpresa, setNomeEmpresa] = useState("");
-  const [titulo, setTitulo] = useState("Wi-Fi Grátis");
+  const [titulo, setTitulo] = useState("Wi-Fi de Alta Velocidade");
   const [subtitulo, setSubtitulo] = useState("Aponte a câmera do seu celular para conectar");
-  const [rodape, setRodape] = useState("SpotNuvy • Conecte-se e aproveite");
+  const [rodape, setRodape] = useState("Conecte-se e aproveite sua experiência");
   const [template, setTemplate] = useState("clean"); // "clean" | "dark" | "gold"
   const [formato, setFormato] = useState("a5"); // "a4" | "a5" | "totem" | "mini"
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -33,23 +35,66 @@ export default function GeradorPlaquinhas() {
   // Inicializar dados padrão a partir da empresa
   useEffect(() => {
     if (user) {
-      setNomeEmpresa(user.empresa_nome || "Meu Estabelecimento");
-      setSsid(`Wi-Fi • ${user.empresa_nome || "Grátis"}`);
-      setUrlDestino(`https://hotspot.nuvycore.online/portal/${user.empresa_slug || "default"}`);
+      const empNome = user.empresa_nome || "Meu Estabelecimento";
+      const empSlug = user.empresa_slug || "default";
+      const host = window.location.host;
+      setNomeEmpresa(empNome);
+      setSsid(`Wi-Fi • ${empNome}`);
+      setUrlDestino(`https://${host}/portal/${empSlug}`);
+      setRodape(`${empNome} • Wi-Fi Seguro`);
     }
   }, [user]);
+
+  // Ao trocar de objetivo, pré-preencher textos e payloads recomendados
+  const handleTrocaObjetivo = (novoObj) => {
+    setObjetivo(novoObj);
+    const empNome = user?.empresa_nome || "Nosso Espaço";
+    const empSlug = user?.empresa_slug || "default";
+    const host = window.location.host;
+
+    if (novoObj === "wifi") {
+      setTitulo("Wi-Fi de Alta Velocidade");
+      setSubtitulo("Aponte a câmera do seu celular para conectar instantaneamente");
+      setTemplate("clean");
+    } else if (novoObj === "voucher") {
+      setTitulo("Acesso Wi-Fi Exclusivo");
+      setSubtitulo("Escaneie o QR Code para conectar com seu Voucher de Acesso");
+      setUrlDestino(`https://${host}/login-hotspot?voucher=${voucherCode || "WIFI-DEMO"}`);
+      setTemplate("dark");
+    } else if (novoObj === "cardapio") {
+      setTitulo("Cardápio Digital & Pedidos");
+      setSubtitulo("Aponte a câmera para ver nosso cardápio completo e pedir na mesa");
+      setUrlDestino(`https://${host}/cardapio/${empSlug}`);
+      setTemplate("gold");
+    } else if (novoObj === "avaliacao") {
+      setTitulo("Avalie Nossa Experiência");
+      setSubtitulo("Deixe sua avaliação 5 estrelas ⭐⭐⭐⭐⭐ no Google ou siga nosso Instagram");
+      setUrlDestino(`https://www.google.com/search?q=${encodeURIComponent(empNome)}`);
+      setTemplate("clean");
+    }
+  };
 
   // Gerar QR Code sempre que os parâmetros mudarem
   useEffect(() => {
     let payload = "";
-    if (tipoQr === "wifi") {
+    const empSlug = user?.empresa_slug || "default";
+    const host = window.location.host;
+
+    if (objetivo === "wifi") {
       if (seguranca === "nopass" || !senha.trim()) {
         payload = `WIFI:S:${ssid.trim()};T:nopass;;`;
       } else {
         payload = `WIFI:S:${ssid.trim()};T:WPA;P:${senha.trim()};;`;
       }
+    } else if (objetivo === "voucher") {
+      const code = voucherCode.trim() ? encodeURIComponent(voucherCode.trim().toUpperCase()) : "";
+      payload = code 
+        ? `https://${host}/login-hotspot?voucher=${code}&auto=true`
+        : `https://${host}/login-hotspot`;
+    } else if (objetivo === "cardapio") {
+      payload = `https://${host}/cardapio/${empSlug}`;
     } else {
-      payload = urlDestino.trim() || `https://hotspot.nuvycore.online/portal/${user?.empresa_slug || "default"}`;
+      payload = urlDestino.trim() || `https://${host}/portal/${empSlug}`;
     }
 
     if (!payload) return;
@@ -65,7 +110,7 @@ export default function GeradorPlaquinhas() {
     })
       .then((url) => setQrDataUrl(url))
       .catch((err) => console.error("Erro ao gerar QR Code:", err));
-  }, [tipoQr, ssid, senha, seguranca, urlDestino, template, user]);
+  }, [objetivo, ssid, senha, seguranca, urlDestino, voucherCode, template, user]);
 
   const handlePrint = () => {
     window.print();
@@ -137,8 +182,8 @@ export default function GeradorPlaquinhas() {
 
       <div className="space-y-6">
         <PageHeader
-          title="Gerador de Plaquinhas de Mesa & Totens com QR Code"
-          subtitle="Crie e imprima displays elegantes para mesas, balcões e porta-retratos de acrílico com conexão Wi-Fi instantânea"
+          title="Gerador de Plaquinhas de Mesa & Totens Multi-Nicho"
+          subtitle="Crie displays profissionais para qualquer tipo de negócio: Restaurantes, Clínicas, Hotéis, Barbearias e Escritórios"
           action={
             <PrimaryButton onClick={handlePrint}>
               <span className="flex items-center gap-2">
@@ -151,6 +196,73 @@ export default function GeradorPlaquinhas() {
           }
         />
 
+        {/* 1. SELEÇÃO DO OBJETIVO DO ESTABELECIMENTO */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            type="button"
+            onClick={() => handleTrocaObjetivo("wifi")}
+            className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+              objetivo === "wifi"
+                ? "border-blue-600 bg-blue-50/70 ring-2 ring-blue-600/30 shadow-sm"
+                : "border-slate-200 hover:border-slate-300 bg-white"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-xl">📶</span>
+              <h4 className="text-xs font-bold text-slate-900">Wi-Fi Geral</h4>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-snug">Para Clínicas, Academias, Lojas e Escritórios.</p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTrocaObjetivo("voucher")}
+            className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+              objetivo === "voucher"
+                ? "border-blue-600 bg-blue-50/70 ring-2 ring-blue-600/30 shadow-sm"
+                : "border-slate-200 hover:border-slate-300 bg-white"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-xl">🎫</span>
+              <h4 className="text-xs font-bold text-slate-900">Voucher / Quarto</h4>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-snug">Para Hotéis, Pousadas, Coworkings e Eventos.</p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTrocaObjetivo("cardapio")}
+            className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+              objetivo === "cardapio"
+                ? "border-amber-600 bg-amber-50/70 ring-2 ring-amber-600/30 shadow-sm"
+                : "border-slate-200 hover:border-slate-300 bg-white"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-xl">🍽️</span>
+              <h4 className="text-xs font-bold text-slate-900">Cardápio na Mesa</h4>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-snug">Para Bares, Restaurantes, Cafés e Lanchonetes.</p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTrocaObjetivo("avaliacao")}
+            className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+              objetivo === "avaliacao"
+                ? "border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-600/30 shadow-sm"
+                : "border-slate-200 hover:border-slate-300 bg-white"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-xl">⭐</span>
+              <h4 className="text-xs font-bold text-slate-900">Avaliações & Redes</h4>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-snug">Para Barbearias, Salões, Estética e Lojas.</p>
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Coluna 1: Painel de Customização (5 colunas) */}
           <div className="lg:col-span-5 space-y-6">
@@ -158,14 +270,14 @@ export default function GeradorPlaquinhas() {
               <CardHeader>
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                   <span>🎨</span>
-                  1. Modelo & Formato da Plaquinha
+                  Design & Formato
                 </h3>
               </CardHeader>
               <CardBody className="space-y-4">
                 {/* Seleção de Template */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-2">
-                    Estilo Visual do Design
+                    Estilo Visual
                   </label>
                   <div className="grid grid-cols-3 gap-2">
                     <button
@@ -181,7 +293,7 @@ export default function GeradorPlaquinhas() {
                         ☀️
                       </div>
                       <p className="text-xs font-bold text-slate-800">Clean</p>
-                      <p className="text-[10px] text-slate-500">Econômico</p>
+                      <p className="text-[10px] text-slate-500">Clássico</p>
                     </button>
 
                     <button
@@ -212,8 +324,8 @@ export default function GeradorPlaquinhas() {
                       <div className="w-6 h-6 rounded-full bg-amber-950 text-amber-300 mx-auto mb-1.5 flex items-center justify-center text-xs">
                         🏆
                       </div>
-                      <p className="text-xs font-bold text-slate-800">Gold</p>
-                      <p className="text-[10px] text-slate-500">Restaurante</p>
+                      <p className="text-xs font-bold text-slate-800">Gold VIP</p>
+                      <p className="text-[10px] text-slate-500">Premium</p>
                     </button>
                   </div>
                 </div>
@@ -221,7 +333,7 @@ export default function GeradorPlaquinhas() {
                 {/* Seleção de Formato */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-2">
-                    Tamanho de Impressão
+                    Tamanho do Display / Plaquinha
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     <button
@@ -234,7 +346,7 @@ export default function GeradorPlaquinhas() {
                       }`}
                     >
                       <span className="block text-xs font-bold">📋 A5 Display de Mesa</span>
-                      <span className="text-[10px] text-slate-500 font-normal">140 x 195 mm (Ideal para Mesa)</span>
+                      <span className="text-[10px] text-slate-500 font-normal">140 x 195 mm (Padrão)</span>
                     </button>
 
                     <button
@@ -284,102 +396,10 @@ export default function GeradorPlaquinhas() {
               <CardHeader>
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                   <span>⚙️</span>
-                  2. Dados de Conexão e Textos
+                  Textos e Identificação
                 </h3>
               </CardHeader>
-              <CardBody className="space-y-4">
-                {/* Tipo de Destino do QR Code */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Ação ao Ler o QR Code
-                  </label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setTipoQr("wifi")}
-                      className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
-                        tipoQr === "wifi"
-                          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-white"
-                      }`}
-                    >
-                      📶 Conexão Wi-Fi Direta
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTipoQr("url")}
-                      className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
-                        tipoQr === "url"
-                          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-white"
-                      }`}
-                    >
-                      🌐 Abrir Portal / Link
-                    </button>
-                  </div>
-                </div>
-
-                {tipoQr === "wifi" ? (
-                  <>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                        Nome da Rede Wi-Fi (SSID) *
-                      </label>
-                      <input
-                        type="text"
-                        value={ssid}
-                        onChange={(e) => setSsid(e.target.value)}
-                        placeholder="Ex: SpotNuvy - Wi-Fi Grátis"
-                        className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:ring-2 focus:ring-blue-600 font-medium"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                          Segurança
-                        </label>
-                        <select
-                          value={seguranca}
-                          onChange={(e) => setSeguranca(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:ring-2 focus:ring-blue-600 font-medium cursor-pointer"
-                        >
-                          <option value="nopass">Sem Senha (Hotspot Aberto)</option>
-                          <option value="WPA">Com Senha (WPA/WPA2)</option>
-                        </select>
-                      </div>
-
-                      {seguranca === "WPA" && (
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                            Senha do Wi-Fi
-                          </label>
-                          <input
-                            type="text"
-                            value={senha}
-                            onChange={(e) => setSenha(e.target.value)}
-                            placeholder="Senha da rede"
-                            className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:ring-2 focus:ring-blue-600 font-mono"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                      URL de Destino *
-                    </label>
-                    <input
-                      type="url"
-                      value={urlDestino}
-                      onChange={(e) => setUrlDestino(e.target.value)}
-                      placeholder="https://hotspot.nuvycore.online/portal/..."
-                      className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:ring-2 focus:ring-blue-600 font-mono"
-                    />
-                  </div>
-                )}
-
+              <CardBody className="space-y-3.5">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                     Nome do Estabelecimento
@@ -388,10 +408,82 @@ export default function GeradorPlaquinhas() {
                     type="text"
                     value={nomeEmpresa}
                     onChange={(e) => setNomeEmpresa(e.target.value)}
-                    placeholder="Ex: Restaurante Sabor & Arte"
-                    className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:ring-2 focus:ring-blue-600 font-medium"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Ex: Restaurante Sabor Real"
                   />
                 </div>
+
+                {objetivo === "voucher" && (
+                  <div className="grid grid-cols-2 gap-2 bg-blue-50/50 p-3 rounded-xl border border-blue-200">
+                    <div>
+                      <label className="block text-[11px] font-bold text-blue-950 uppercase mb-1">
+                        Código do Voucher
+                      </label>
+                      <input
+                        type="text"
+                        value={voucherCode}
+                        onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+                        className="w-full px-2.5 py-1.5 text-xs font-mono font-bold rounded-lg border border-blue-300 bg-white"
+                        placeholder="Ex: WIFI-4LC8"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-blue-950 uppercase mb-1">
+                        Mesa / Quarto
+                      </label>
+                      <input
+                        type="text"
+                        value={identificacaoMesa}
+                        onChange={(e) => setIdentificacaoMesa(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs font-bold rounded-lg border border-blue-300 bg-white"
+                        placeholder="Ex: Quarto 102"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {objetivo === "wifi" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        Nome do Wi-Fi (SSID)
+                      </label>
+                      <input
+                        type="text"
+                        value={ssid}
+                        onChange={(e) => setSsid(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        Senha (ou Sem Senha)
+                      </label>
+                      <input
+                        type="text"
+                        value={senha}
+                        onChange={(e) => setSenha(e.target.value)}
+                        placeholder="Deixe vazio se for aberto"
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {objetivo === "avaliacao" && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      Link do Google Meu Negócio / Instagram
+                    </label>
+                    <input
+                      type="url"
+                      value={urlDestino}
+                      onChange={(e) => setUrlDestino(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500"
+                      placeholder="https://g.page/r/sua-empresa/review"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
@@ -401,8 +493,7 @@ export default function GeradorPlaquinhas() {
                     type="text"
                     value={titulo}
                     onChange={(e) => setTitulo(e.target.value)}
-                    placeholder="Ex: Wi-Fi Grátis"
-                    className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:ring-2 focus:ring-blue-600 font-medium"
+                    className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -410,25 +501,11 @@ export default function GeradorPlaquinhas() {
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                     Frase de Instrução
                   </label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={2}
                     value={subtitulo}
                     onChange={(e) => setSubtitulo(e.target.value)}
-                    placeholder="Ex: Aponte a câmera do celular para conectar"
-                    className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:ring-2 focus:ring-blue-600 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Rodapé / Redes Sociais
-                  </label>
-                  <input
-                    type="text"
-                    value={rodape}
-                    onChange={(e) => setRodape(e.target.value)}
-                    placeholder="Ex: @seurestaurante • Bom Apetite!"
-                    className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:ring-2 focus:ring-blue-600 font-medium"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -440,7 +517,7 @@ export default function GeradorPlaquinhas() {
                     type="file"
                     accept="image/*"
                     onChange={handleLogoUpload}
-                    className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
+                    className="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
                   />
                 </div>
               </CardBody>
@@ -465,7 +542,7 @@ export default function GeradorPlaquinhas() {
             {/* Container da Folha e Plaquinha */}
             <div className="w-full bg-slate-200/70 p-6 md:p-8 rounded-[10px] border border-slate-300 flex items-center justify-center overflow-hidden shadow-inner">
               <div id="print-sheet-wrapper" ref={printAreaRef}>
-                {/* Linha de corte externa pontilhada (aparece sutilmente no A4 para guiar o corte) */}
+                {/* Linha de corte externa pontilhada */}
                 <div
                   className={`
                     relative transition-all duration-200 p-0 flex flex-col items-center justify-center
@@ -523,9 +600,17 @@ export default function GeradorPlaquinhas() {
                               : "bg-amber-600 text-stone-950"
                           }`}
                         >
-                          <svg className="w-5 h-5 print:w-[5mm] print:h-[5mm]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-                          </svg>
+                          {objetivo === "cardapio" ? (
+                            <span className="text-base print:text-[12pt]">🍽️</span>
+                          ) : objetivo === "voucher" ? (
+                            <span className="text-base print:text-[12pt]">🎫</span>
+                          ) : objetivo === "avaliacao" ? (
+                            <span className="text-base print:text-[12pt]">⭐</span>
+                          ) : (
+                            <svg className="w-5 h-5 print:w-[5mm] print:h-[5mm]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+                            </svg>
+                          )}
                         </div>
                       )}
 
@@ -588,9 +673,9 @@ export default function GeradorPlaquinhas() {
                       </p>
                     </div>
 
-                    {/* Bloco de Dados da Rede & Rodapé */}
+                    {/* Bloco de Dados e Rodapé */}
                     <div className="w-full space-y-1.5 pb-1">
-                      {tipoQr === "wifi" && (
+                      {objetivo === "wifi" && (
                         <div
                           className={`py-1.5 px-3 rounded-xl text-[10px] print:text-[7.5pt] font-semibold border flex items-center justify-between gap-1 ${
                             template === "clean"
@@ -606,6 +691,27 @@ export default function GeradorPlaquinhas() {
                           ) : (
                             <span className="shrink-0 text-emerald-500 font-bold">✓ Sem Senha</span>
                           )}
+                        </div>
+                      )}
+
+                      {objetivo === "voucher" && voucherCode && (
+                        <div
+                          className={`py-1.5 px-3 rounded-xl text-[10px] print:text-[7.5pt] font-semibold border flex items-center justify-between gap-1 ${
+                            template === "clean"
+                              ? "bg-blue-50 border-blue-200 text-blue-900"
+                              : template === "dark"
+                              ? "bg-slate-800 border-slate-700 text-blue-300"
+                              : "bg-stone-900 border-stone-800 text-amber-300"
+                          }`}
+                        >
+                          <span>{identificacaoMesa || "Voucher Individual"}</span>
+                          <span className="font-mono font-bold">{voucherCode}</span>
+                        </div>
+                      )}
+
+                      {objetivo === "avaliacao" && (
+                        <div className="flex justify-center text-amber-400 text-xs gap-0.5 my-1">
+                          ★★★★★
                         </div>
                       )}
 
@@ -632,7 +738,7 @@ export default function GeradorPlaquinhas() {
               <div className="space-y-1">
                 <p className="font-bold">Como obter o melhor resultado impresso:</p>
                 <p className="text-slate-600 leading-relaxed">
-                  Ao clicar em <strong>Imprimir / Salvar em PDF</strong>, no diálogo de impressão selecione <strong>Páginas: 1</strong> (ou Tudo) e marque <strong>Gráficos de segundo plano</strong> para que o design saia com as cores e molduras completas. Em seguida, recorte nas marcas e insira no display acrílico de mesa.
+                  Ao clicar em <strong>Imprimir / Salvar em PDF</strong>, selecione <strong>Páginas: 1</strong> e marque a opção <strong>Gráficos de segundo plano</strong> para que as cores, molduras e QR Code saiam com qualidade máxima para seus displays.
                 </p>
               </div>
             </div>

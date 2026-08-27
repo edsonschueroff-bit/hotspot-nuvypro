@@ -2428,12 +2428,16 @@ Usava `leads.criado_em` (data do cadastro — nunca muda). Agora usa:
 - **Dynamic Sidebar UI:** Menu esconde automaticamente opções irrelevantes (`Acesso Remoto`, `Dash Hotspot`, `CRM`, `Vendas`) caso o plano SaaS atual do cliente não possua os respectivos módulos.
 - **Padronização Global SaaS:** 10 telas órfãs foram empacotadas no `AdminLayout` e os links obsoletos de `⬅ Voltar` foram pulverizados, tornando o design fluidamente escalável.
 
-**10. Suíte de Expansão Estratégica SaaS (Agosto 2026 - Concluído):**
-- **Vouchers em Lote & PDV Físico Térmico (58mm/80mm):** Migration `034_vouchers_lote.js`, `voucherController.js`, `voucherRoutes.js` e interface `Vouchers.jsx`. Suporta geração em massa com códigos curtos alfanuméricos (ex: `WIFI-8X92`), provisionamento no FreeRADIUS (`radcheck`, `radreply`, `radius_users`) e impressão em mini-impressoras térmicas de cupom com QR Code individual e corte pontilhado.
-- **Wi-Fi Commerce & Cardápio Digital Pós-Login:** Migration `035_cardapio_digital.js`, `cardapioController.js`, `cardapioRoutes.js`, painel `CardapioAdmin.jsx` e página mobile-first `CardapioPublico.jsx` na rota `/cardapio/:empresaSlug`. Permite fotos de produtos, destaques, cálculo automático de carrinho e envio de pedidos direto no WhatsApp do lojista.
-- **Programa de Fidelidade & Gamificação de Frequência:** Migration `036_fidelidade_regras.js`, `fidelidadeController.js`, `fidelidadeRoutes.js` e interface `Fidelidade.jsx`. Contabiliza automaticamente a recorrência de visitas do visitante ao Wi-Fi e dispara cupons/brindes exclusivos no WhatsApp ao atingir metas configuradas (ex: 5ª visita).
-- **Portal Captivo Multi-Idioma Automático (i18n):** Motor `i18n.js` com suporte a Português (🇧🇷), Inglês (🇺🇸) e Espanhol (🇪🇸), auto-detecção via `navigator.language` e seletor `LanguageSelector.jsx` integrado nos portais públicos.
-- **Portal do Titular LGPD & Direito ao Esquecimento 1-Clique:** Migration `037_lgpd_titular_logs.js`, `lgpdTitularController.js`, `lgpdTitularRoutes.js` e interface pública `PortalTitularLgpd.jsx` (`/privacidade/:empresaSlug`). Permite ao titular validar titularidade via OTP no WhatsApp, consultar extrato de dados coletados e solicitar a anonimização/exclusão definitiva com emissão de Certificado Oficial e hash SHA-256 (Art. 18 LGPD).
+**11. Otimizações de Conexão, Nova Tela de Status Hotspot & Integração Multi-Nicho (Agosto 2026 - Concluído):**
+- **Correção Definitiva de Sessões Ativas FreeRADIUS & MikroTik:** Ajuste no `sessionJanitorService.js` (`sqlSessoesAtivas` com `INTERVAL 4 MINUTE` e `COALESCE(acctupdatetime, acctstarttime)`) e no provisionamento de `Acct-Interim-Interval` (120s) e `Session-Timeout` em `voucherController.js`, eliminando quedas falsas no contador de dispositivos conectados do Dashboard.
+- **Redesenho Completo da Tela de Status Hotspot (`status.html`):** Substituição do template padrão do MikroTik por uma interface mobile-first em Português, com cabeçalho pulsante de conexão ativa, exibição do tempo restante do voucher em destaque esmeralda, métricas de consumo de dados (Download/Upload) e informações do aparelho (IP/MAC).
+- **Download Automático de `status.html` no MikroTik:** Integrado no Step 9.2 de `hotspotSetup.js` e na rota `POST /api/mikrotiks/:id/enviar-login`, garantindo envio simultâneo de `login.html` e `status.html` ao configurar novos roteadores ou sincronizar páginas.
+- **Gerador de Plaquinhas de Mesa Multi-Nicho (`GeradorPlaquinhas.jsx`):** 4 objetivos prontos em 1 clique: (1) 📶 *Wi-Fi Geral* (Clínicas, Academias, Lojas), (2) 🎫 *Voucher / Quarto* (Hotéis, Pousadas, Coworkings com auto-conexão), (3) 🍽️ *Cardápio na Mesa* (Bares e Restaurantes), (4) ⭐ *Avaliações & Redes* (Google 5 Estrelas e Instagram). Suporte a formatos A5 Mesa, Totem 10x15, A4 e Mini Adesivo 7x7 em 300 DPI.
+- **Vouchers em Lote com Impressão em Cartões A4 (`Vouchers.jsx`):** Adicionado suporte a impressão de folhas A4 com grade de cartões de mesa elegantes com QR Code individual por voucher para recorte e colocação em displays físicos, além do formato térmico de 58mm/80mm.
+- **Ações Pós-Login Flexíveis e Inteligentes (`server.js` + `Migration 036`):** O botão principal da tela de status se adapta dinamicamente ao perfil do estabelecimento (Cardápio, Instagram, Google Review 5 Estrelas, WhatsApp da Recepção, Site ou Navegação Livre).
+- **Mecanismos de Avaliação de Experiência:**
+  - *No local:* Google Reviews 5 Estrelas via Plaquinha de Mesa e Botão de Status.
+  - *Pós-visita (30-60 min):* Pesquisa de Satisfação NPS enviada automaticamente pelo CRM via WhatsApp com classificação Promotor/Neutro/Detrator.
 
 ---
 
@@ -2445,12 +2449,13 @@ Todos os itens priorizados foram implementados e validados:
 4. ✅ **PWA (Progressive Web App)** (Aplicativo instalável no celular/desktop)
 5. ✅ **Gerador de Plaquinhas de Mesa em PDF com QR Code** (Displays de mesa e totens)
 6. ✅ **SaaS Modular Ocultação Flexível (Planos A La Carte)** (Construtor de Planos Super Admin e UI Sidebar Dinâmica)
-7. ✅ **Vouchers em Lote & PDV Físico Térmico** (Mini-impressoras 58mm/80mm)
+7. ✅ **Vouchers em Lote & PDV Físico Térmico e Cartões A4** (Mini-impressoras 58mm/80mm e Grade A4)
 8. ✅ **Wi-Fi Commerce & Cardápio Digital Pós-Login** (Vitrine e pedidos no WhatsApp)
 9. ✅ **Programa de Fidelidade & Gamificação** (Recompensas automáticas por visitas)
 10. ✅ **Portal Captivo Multi-Idioma Automático** (🇧🇷 PT / 🇺🇸 EN / 🇪🇸 ES)
 11. ✅ **Portal do Titular LGPD & Direito ao Esquecimento** (Autonomia e conformidade ANPD)
 12. ✅ **Assinatura Recorrente no Cartão de Crédito & Débito Automático** (Tokenização PCI-DSS e cobrança mensal)
+13. ✅ **Nova Tela de Status Hotspot em Português & Ações Pós-Login Adaptativas** (Cardápio/Google/Instagram/WhatsApp)
 
 ---
 
@@ -2625,6 +2630,13 @@ Todos os itens priorizados foram implementados e validados:
     - **Auto-Refresh & Rotas:** Adicionado polling silencioso de 15s em `Sessoes.jsx` e redirecionamento de stub em `App.jsx`.
     - **Suite de Regressão Automatizada:** 8/8 testes aprovados com 100% de sucesso (Cenários A, B, C, D, E, F, Marco Civil, Pagamentos e Multi-Tenant).
 
+19. **Planos Modulares & Feature Gating "À La Carte" (CONCLUÍDO 26/08/2026):**
+    - **Migration & Schema:** Criada migration [`025_saas_planos_modular.js`](file:///var/www/hotspot/backend/migrations/025_saas_planos_modular.js) adicionando `valor_anual`, `dias_trial`, `limite_leads`, `limite_whatsapp`, `limite_filiais`, `limite_usuarios` e `modulos_liberados` (JSON).
+    - **Backend & Controller:** [`saasPlanoController.js`](file:///var/www/hotspot/backend/src/controllers/saasPlanoController.js) atualizado para persistir todas as 13 chaves modulares e cotas operacionais. Rota `by-slug` em `empresaRoutes.js` atualizada para injetar `modulos_liberados` no contexto do tenant. `registroController.js` atualizado para aplicar `dias_trial` do plano no cadastro.
+    - **Frontend & Página Dedicada:** Criada página dedicada [`SaasPlanoEditor.jsx`](file:///var/www/hotspot/frontend/src/pages/super/SaasPlanoEditor.jsx) (rotas `/super/saas-planos/novo` e `/super/saas-planos/editar/:id`) com layout 2 colunas: formulário em 3 abas na esquerda + card de **Live Preview em Tempo Real** na direita, com presets de 1-clique (*VPN Winbox*, *CRM WhatsApp*, *Hotspot Padrão*, *Full Enterprise*) e switches ilustrados para os 13 módulos.
+    - **Adaptação Dinâmica do Painel (`AdminLayout.jsx`):** A sidebar dos estabelecimentos agora filtra e oculta automaticamente qualquer menu ou ferramenta que não esteja inclusa no plano contratado pelo cliente (ex: cliente do plano VPN visualiza somente VPN/MikroTik).
+    - **Status do Build:** `npm run build` compilado com 0 erros (9.05s).
+
 ---
 
 ### 📊 Matriz Atualizada de Integrações do Sistema (Status Oficial):
@@ -2640,6 +2652,7 @@ Todos os itens priorizados foram implementados e validados:
 10. **Webhooks Outbound Hub:** ✅ Operacional (HMAC-SHA256, eventos de leads, pagamentos e cupons).
 11. **Open Graph & Social Share Preview:** ✅ Operacional (banner Nuvy Pro em 1200x630 e tags completas).
 12. **Identidade Visual & Branding:** ✅ Operacional (**Nuvy Pro** — Design Precision Light).
+13. **Planos Modulares & Feature Gating:** ✅ Operacional (Venda à la carte e adaptação da sidebar por tenant).
 
 ---
 

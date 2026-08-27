@@ -322,11 +322,28 @@ async function configurarHotspot(mikrotik, portal, systemDomain, config = {}, em
         } catch (e) { /* fallback manual */ }
       }
 
-      if (!ok) {
-        const fullUrl = `https://${systemDomain}/hotspot/redirect/${mikrotik.id}?mac=$(mac)&ip=$(ip)&mikrotik_id=${mikrotik.id}&empresa_id=${empresaId}&empresa=${empresaSlug}`;
-        addStep("login_page", "aviso",
-          `Nao conseguiu baixar automaticamente. Substitua ${dstLogin} manualmente com redirect para: ${fullUrl}`
-        );
+      // === 9.2 Status Page (download status.html) ===
+      const statusFetchUrl = `https://${systemDomain}/api/hotspot-status/${mikrotik.id}`;
+      const dstStatus = `${htmlDir}/status.html`;
+      try {
+        await safeWrite("/tool/fetch", [
+          `=url=${statusFetchUrl}`,
+          `=dst-path=${dstStatus}`,
+          "=mode=https",
+          "=check-certificate=no",
+        ]);
+        addStep("status_page", "ok", `status.html baixado em ${dstStatus} (HTTPS)`);
+      } catch (e) {
+        try {
+          await safeWrite("/tool/fetch", [
+            `=url=http://${systemDomain}/api/hotspot-status/${mikrotik.id}`,
+            `=dst-path=${dstStatus}`,
+            "=mode=http",
+          ]);
+          addStep("status_page", "ok", `status.html baixado em ${dstStatus} (HTTP)`);
+        } catch (e2) {
+          addStep("status_page", "aviso", "Não foi possível baixar status.html automaticamente");
+        }
       }
     } catch (e) {
       addStep("login_page", "aviso", e.message);

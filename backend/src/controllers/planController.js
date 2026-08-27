@@ -6,20 +6,20 @@ const { decrypt } = require("../utils/cryptoHelper");
 const criarPlano = async (req, res) => {
   try {
     const {
-      nome, descricao, valor, duracao_minutos,
+      nome, descricao, valor, duracao_minutos, tipo_validade,
       velocidade_down, velocidade_up,
       mikrotik_id, address_pool, shared_users, ativo
     } = req.body;
 
     await db.execute(`
       INSERT INTO planos (
-        empresa_id, nome, descricao, valor, duracao_minutos,
+        empresa_id, nome, descricao, valor, duracao_minutos, tipo_validade,
         velocidade_down, velocidade_up,
         mikrotik_id, address_pool, shared_users, ativo
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       req.empresa_id,
-      nome, descricao, valor, duracao_minutos,
+      nome, descricao, valor, duracao_minutos, tipo_validade === 'acumulado' ? 'acumulado' : 'corrido',
       velocidade_down, velocidade_up,
       mikrotik_id, address_pool, shared_users, ativo
     ]);
@@ -52,7 +52,7 @@ async function listarPlanos(req, res) {
 async function atualizarPlano(req, res) {
   const { id } = req.params;
   const {
-    nome, descricao, valor, duracao_minutos,
+    nome, descricao, valor, duracao_minutos, tipo_validade,
     velocidade_down, velocidade_up,
     mikrotik_id, address_pool, shared_users, ativo
   } = req.body;
@@ -60,12 +60,12 @@ async function atualizarPlano(req, res) {
   try {
     await db.execute(`
       UPDATE planos
-      SET nome = ?, descricao = ?, valor = ?, duracao_minutos = ?,
+      SET nome = ?, descricao = ?, valor = ?, duracao_minutos = ?, tipo_validade = ?,
           velocidade_down = ?, velocidade_up = ?, mikrotik_id = ?,
           address_pool = ?, shared_users = ?, ativo = ?
       WHERE id = ? AND empresa_id = ?
     `, [
-      nome, descricao, valor, duracao_minutos,
+      nome, descricao, valor, duracao_minutos, tipo_validade === 'acumulado' ? 'acumulado' : 'corrido',
       velocidade_down, velocidade_up, mikrotik_id,
       address_pool, shared_users, ativo ? 1 : 0, id, req.empresa_id
     ]);

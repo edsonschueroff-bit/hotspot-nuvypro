@@ -78,6 +78,20 @@ exports.gerarLote = async (req, res) => {
         [codigo, speedLimit, speedLimit]
       );
 
+      // Heartbeat a cada 2min para manter acctupdatetime atualizado no radacct
+      await conn.execute(
+        `INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Acct-Interim-Interval', ':=', '120')
+         ON DUPLICATE KEY UPDATE value = '120'`,
+        [codigo]
+      );
+
+      // Session-Timeout limita a sessao pelo tempo do plano
+      await conn.execute(
+        `INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Session-Timeout', ':=', ?)
+         ON DUPLICATE KEY UPDATE value = ?`,
+        [codigo, String(duracaoSegundos), String(duracaoSegundos)]
+      );
+
       await conn.execute(
         `INSERT INTO radius_users (empresa_id, username, plano_id, nas_id) VALUES (?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE plano_id = ?`,

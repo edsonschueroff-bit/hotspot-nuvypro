@@ -422,12 +422,12 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Tabela Últimos Leads */}
+              {/* Tabela Últimas Sessões Reais */}
               <div className="bg-white border border-[#e2e8f0] rounded-[10px] shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden">
                 <div className="px-5 py-4 border-b border-[#e2e8f0] bg-[#f8fafc] flex items-center justify-between">
                   <div>
                     <h2 className="text-[15px] font-600 text-slate-900">Últimos Visitantes Conectados</h2>
-                    <p className="text-[12px] text-slate-500 mt-0.5">Visitantes que realizaram login no Wi-Fi</p>
+                    <p className="text-[12px] text-slate-500 mt-0.5">Sessões reais de Wi-Fi — atualizado a cada 10s</p>
                   </div>
                   <Link
                     to={empresaSlug ? `/admin/${empresaSlug}/lgpd` : "/admin"}
@@ -441,54 +441,63 @@ export default function Dashboard() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-[#e2e8f0] bg-[#f8fafc]">
-                        <th className="px-5 py-3 text-left text-[10px] font-600 text-slate-400 uppercase tracking-wider">Cliente</th>
+                        <th className="px-5 py-3 text-left text-[10px] font-600 text-slate-400 uppercase tracking-wider">Visitante</th>
                         <th className="px-5 py-3 text-left text-[10px] font-600 text-slate-400 uppercase tracking-wider">Contato</th>
-                        <th className="px-5 py-3 text-left text-[10px] font-600 text-slate-400 uppercase tracking-wider">Origem</th>
-                        <th className="px-5 py-3 text-right text-[10px] font-600 text-slate-400 uppercase tracking-wider">Data</th>
+                        <th className="px-5 py-3 text-left text-[10px] font-600 text-slate-400 uppercase tracking-wider">Status</th>
+                        <th className="px-5 py-3 text-right text-[10px] font-600 text-slate-400 uppercase tracking-wider">Conectado em</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {dados?.ultimos_leads?.length > 0 ? (
-                        dados.ultimos_leads.map((lead) => (
-                          <tr key={lead.id} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc] transition-colors">
-                            <td className="px-5 py-3.5">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-[#eff6ff] text-[#2563eb] font-700 text-[11px] flex items-center justify-center flex-shrink-0">
-                                  {lead.nome ? lead.nome.substring(0, 2).toUpperCase() : "VI"}
+                      {dados?.ultimas_sessoes?.length > 0 ? (
+                        dados.ultimas_sessoes.map((s, idx) => {
+                          const label = s.nome || s.username || "Visitante Wi-Fi";
+                          const initials = label.substring(0, 2).toUpperCase();
+                          const isAtivo = s.status_sessao === "ativo";
+                          const durMin = s.tempo_sessao ? Math.floor(Number(s.tempo_sessao) / 60) : null;
+                          return (
+                            <tr key={idx} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc] transition-colors">
+                              <td className="px-5 py-3.5">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-8 h-8 rounded-full font-700 text-[11px] flex items-center justify-center flex-shrink-0 ${isAtivo ? "bg-[#ecfdf5] text-[#059669]" : "bg-[#eff6ff] text-[#2563eb]"}`}>
+                                    {initials}
+                                  </div>
+                                  <div>
+                                    <span className="block text-[13px] font-600 text-slate-800">{label}</span>
+                                    <span className="text-[10px] font-mono text-slate-400">{s.mac || "—"}</span>
+                                  </div>
                                 </div>
-                                <div>
-                                  <span className="block text-[13px] font-600 text-slate-800">{lead.nome || "Visitante Wi-Fi"}</span>
-                                  <span className="text-[10px] font-mono text-slate-400">{lead.mac || "—"}</span>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-5 py-3.5 text-[12px]">
-                              {lead.telefone ? (
-                                <span className="font-500 text-[#10b981]">📱 {lead.telefone}</span>
-                              ) : lead.email ? (
-                                <span className="font-500 text-slate-600">✉️ {lead.email}</span>
-                              ) : (
-                                <span className="text-slate-400 italic">Não informado</span>
-                              )}
-                            </td>
-                            <td className="px-5 py-3.5">
-                              {lead.origem === "social_google" ? (
-                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-600 bg-[#eff6ff] text-[#2563eb] border border-[#bfdbfe]">Google</span>
-                              ) : lead.origem === "social_facebook" ? (
-                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-600 bg-[#eef2ff] text-[#4f46e5] border border-[#c7d2fe]">Facebook</span>
-                              ) : (
-                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-600 bg-[#f8fafc] text-slate-600 border border-[#e2e8f0]">Formulário</span>
-                              )}
-                            </td>
-                            <td className="px-5 py-3.5 text-right text-[11px] text-slate-400">
-                              {lead.criado_em ? new Date(lead.criado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—"}
-                            </td>
-                          </tr>
-                        ))
+                              </td>
+                              <td className="px-5 py-3.5 text-[12px]">
+                                {s.telefone ? (
+                                  <span className="font-500 text-[#10b981]">📱 {s.telefone}</span>
+                                ) : s.email ? (
+                                  <span className="font-500 text-slate-600">✉️ {s.email}</span>
+                                ) : (
+                                  <span className="text-slate-400 italic font-mono text-[10px]">{s.username}</span>
+                                )}
+                              </td>
+                              <td className="px-5 py-3.5">
+                                {isAtivo ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-600 bg-[#ecfdf5] text-[#059669] border border-[#a7f3d0]">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-pulse inline-block" />
+                                    Online
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-600 bg-[#f8fafc] text-slate-500 border border-[#e2e8f0]">
+                                    {durMin !== null ? `${durMin}min` : "Encerrado"}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-5 py-3.5 text-right text-[11px] text-slate-400">
+                                {s.conectado_em ? new Date(s.conectado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })
                       ) : (
                         <tr>
                           <td colSpan={4} className="px-5 py-10 text-center text-[12px] text-slate-400">
-                            Nenhum lead capturado ainda.
+                            Nenhuma sessão Wi-Fi registrada ainda.
                           </td>
                         </tr>
                       )}

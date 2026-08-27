@@ -42,8 +42,9 @@ async function gerarAcessoTemporario(mac, ip, planoId, empresaId, opts = {}) {
     await db.query(
       `INSERT INTO radreply (username, attribute, op, value) VALUES
         (?, 'Mikrotik-Rate-Limit', ':=', ?),
-        (?, 'Session-Timeout', ':=', ?)`,
-      [username, rateLimit, username, String(tempoSegundos)]
+        (?, 'Session-Timeout', ':=', ?),
+        (?, 'Acct-Interim-Interval', ':=', '120')`,
+      [username, rateLimit, username, String(tempoSegundos), username]
     );
 
     // Busca o Mikrotik vinculado ao plano (filtrando por empresa)

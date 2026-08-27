@@ -148,13 +148,40 @@ exports.getDashboard = async (req, res) => {
       }))
       .sort((a, b) => b.total - a.total);
 
-    // 7. Últimos Leads Capturados (Ao Vivo)
-    const [ultimos_leads] = await db.query(
-      `SELECT id, nome, email, telefone, mac, ip, origem, criado_em
-       FROM leads
-       WHERE empresa_id = ?
-       ORDER BY id DESC
-       LIMIT 8`,
+    // 7. Últimas Sessões de Conexão Reais (radacct + enriquecimento de dados sem duplicatas)
+    const [ultimas_sessoes] = await db.query(
+      `SELECT 
+         ra.radacctid,
+         ra.username,
+         ra.callingstationid AS mac,
+         ra.framedipaddress AS ip,
+         ra.acctstarttime AS conectado_em,
+         ra.acctstoptime AS desconectado_em,
+         ra.acctsessiontime AS tempo_sessao,
+         COALESCE(l.nome, v.codigo, ra.username) AS nome,
+         l.telefone,
+         l.email,
+         CASE 
+           WHEN ra.acctstoptime IS NULL THEN 'ativo'
+           ELSE 'encerrado'
+         END AS status_sessao
+       FROM radacct ra
+       JOIN radius_users ru ON ru.username COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci
+       LEFT JOIN (
+         SELECT mac, nome, telefone, email, empresa_id
+         FROM (
+           SELECT mac, nome, telefone, email, empresa_id,
+                  ROW_NUMBER() OVER (PARTITION BY mac, empresa_id ORDER BY id DESC) as rn
+           FROM leads
+         ) l_sub
+         WHERE rn = 1
+       ) l ON l.mac COLLATE utf8mb4_unicode_ci = ra.callingstationid COLLATE utf8mb4_unicode_ci
+         AND l.empresa_id = ru.empresa_id
+       LEFT JOIN vouchers v ON v.codigo COLLATE utf8mb4_unicode_ci = ra.username COLLATE utf8mb4_unicode_ci
+         AND v.empresa_id = ru.empresa_id
+       WHERE ru.empresa_id = ?
+       ORDER BY ra.acctstarttime DESC
+       LIMIT 10`,
       [empresaId]
     );
 
@@ -215,7 +242,7 @@ exports.getDashboard = async (req, res) => {
       },
       horarios_pico,
       canais_captura,
-      ultimos_leads,
+      ultimas_sessoes,
       cupons_populares
     });
   } catch (err) {
